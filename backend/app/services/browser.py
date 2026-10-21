@@ -1,8 +1,6 @@
 
-import asyncio
 from pathlib import Path
-
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -15,7 +13,7 @@ VIEWPORTS = {
 }
 
 
-async def inspect_website(url: str, inspection_id: str):
+def inspect_website_sync(url: str, inspection_id: str):
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
     results = {
@@ -27,36 +25,36 @@ async def inspect_website(url: str, inspection_id: str):
         "findings": [],
     }
 
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
 
         try:
-            page = await browser.new_page()
+            page = browser.new_page()
 
-            await page.goto(
+            page.goto(
                 url,
                 wait_until="domcontentloaded",
                 timeout=20000,
             )
 
-            results["title"] = await page.title()
+            results["title"] = page.title()
 
             for name, size in VIEWPORTS.items():
-                await page.set_viewport_size(size)
-                await page.wait_for_timeout(300)
+                page.set_viewport_size(size)
+                page.wait_for_timeout(300)
 
                 screenshot_path = (
                     SCREENSHOT_DIR / f"{inspection_id}_{name}.png"
                 )
 
-                await page.screenshot(
+                page.screenshot(
                     path=str(screenshot_path),
                     full_page=True,
                 )
 
                 results["screenshots"][name] = str(screenshot_path)
 
-                has_overflow = await page.evaluate(
+                has_overflow = page.evaluate(
                     "() => document.documentElement.scrollWidth > window.innerWidth"
                 )
 
@@ -72,6 +70,6 @@ async def inspect_website(url: str, inspection_id: str):
                     })
 
         finally:
-            await browser.close()
+            browser.close()
 
     return results
