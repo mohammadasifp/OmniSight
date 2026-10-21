@@ -1,5 +1,12 @@
 
 import logging
+from fastapi import HTTPException
+from app.db.database import initialize_database
+from app.services.history import (
+    save_inspection,
+    list_inspections,
+    get_inspection,
+)
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
