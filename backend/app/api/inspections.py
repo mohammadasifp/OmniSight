@@ -35,6 +35,8 @@ async def create_inspection(request: InspectionRequest):
             inspection_id,
         )
 
+        initialize_database()
+        save_inspection(result)
         return result
 
     except Exception as exc:
@@ -48,3 +50,23 @@ async def create_inspection(request: InspectionRequest):
                 f"{error_message}"
             ),
         ) from exc
+
+@router.get("")
+def get_inspection_history():
+    initialize_database()
+    return list_inspections()
+
+
+@router.get("/{inspection_id}")
+def get_inspection_details(inspection_id: str):
+    initialize_database()
+
+    result = get_inspection(inspection_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Inspection not found",
+        )
+
+    return result
