@@ -52,7 +52,9 @@ def inspect_website_sync(url: str, inspection_id: str):
                     full_page=True,
                 )
 
-                results["screenshots"][name] = str(screenshot_path)
+                results["screenshots"][name] = (
+                    f"/screenshots/{inspection_id}_{name}.png"
+            )
 
                 has_overflow = page.evaluate(
                     "() => document.documentElement.scrollWidth > window.innerWidth"

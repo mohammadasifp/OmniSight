@@ -1,0 +1,108 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: Inter, Arial, sans-serif;
+  color: #e8edf7;
+  background: #0b1020;
+  font-synthesis: none;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  background: #0b1020;
+}
+
+.sidebar {
+  width: 240px;
+  padding: 28px 20px;
+  background: #10172a;
+  border-right: 1px solid #263047;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 32px;
+}
+
+.dashboard-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.card,
+.panel {
+  padding: 22px;
+  border: 1px solid #263047;
+  border-radius: 14px;
+  background: #141c30;
+}
+
+input {
+  width: 100%;
+  padding: 13px;
+  color: #e8edf7;
+  background: #0b1020;
+  border: 1px solid #36425b;
+  border-radius: 8px;
+}
+
+button {
+  padding: 12px 18px;
+  color: white;
+  background: #635bff;
+  border: 0;
+  border-radius: 8px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+@media (max-width: 760px) {
+  .dashboard-layout {
+    display: block;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .main-content {
+    padding: 18px;
+  }
+}
