@@ -13,6 +13,47 @@ VIEWPORTS = {
 }
 
 
+def detect_ui_issues(page):
+    """Detect common UI problems on the current page."""
+    issues = []
+
+    # Check page title
+    title = page.title().strip()
+    if not title:
+        issues.append({
+            "type": "missing_title",
+            "severity": "warning",
+            "message": "The page is missing a title.",
+        })
+
+    # Check horizontal overflow
+    overflow = page.evaluate("""
+        document.documentElement.scrollWidth > window.innerWidth
+    """)
+    if overflow:
+        issues.append({
+            "type": "horizontal_overflow",
+            "severity": "high",
+            "message": "The page overflows horizontally at this viewport.",
+        })
+
+    # Check broken images
+    broken_images = page.locator("img").evaluate_all("""
+        images => images
+            .filter(img => !img.complete || img.naturalWidth === 0)
+            .map(img => img.src)
+    """)
+
+    for image_url in broken_images:
+        issues.append({
+            "type": "broken_image",
+            "severity": "warning",
+            "message": "An image failed to load.",
+            "element": image_url,
+        })
+
+    return issues
+
 def inspect_website_sync(url: str, inspection_id: str):
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
