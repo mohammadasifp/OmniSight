@@ -3,26 +3,71 @@ import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 
 const API = "http://127.0.0.1:8000";
+const VIEWPORTS = ["desktop", "tablet", "mobile"];
+
+function parseJSON(value, fallback) {
+  if (typeof value !== "string") return value ?? fallback;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeInspection(item = {}) {
+  return {
+    ...item,
+    id: item.id ?? item.inspection_id ?? "",
+    findings: parseJSON(item.findings ?? item.findings_json, []),
+    screenshots: parseJSON(
+      item.screenshots ?? item.screenshots_json,
+      {}
+    ),
+    title: item.title ?? "",
+    url: item.url ?? "",
+    status: item.status ?? "completed",
+    created_at: item.created_at ?? "",
+  };
+}
 
 function screenshotUrl(path) {
   if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
+
+  // Handle paths returned by the backend.
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const parsed = new URL(path);
+      return `${API}${parsed.pathname}`;
+    } catch {
+      return path;
+    }
   }
 
-  // Support both new API paths and older Windows file paths.
+  // Handle old absolute Windows paths, if present in history.
   const filename = path.split(/[\\/]/).pop();
 
   return `${API}/screenshots/${encodeURIComponent(filename)}`;
+}
+
+function severityClass(severity = "warning") {
+  const value = String(severity).toLowerCase();
+
+  if (value === "high" || value === "critical") return "high";
+  if (value === "medium") return "medium";
+  if (value === "low") return "low";
+
+  return "warning";
 }
 
 function App() {
   const [url, setUrl] = useState("https://example.com");
   const [inspection, setInspection] = useState(null);
   const [history, setHistory] = useState([]);
+  const [activeViewport, setActiveViewport] = useState("desktop");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -31,15 +76,17 @@ function App() {
       const response = await fetch(`${API}/api/inspections`);
 
       if (!response.ok) {
-        throw new Error(`History request failed (${response.status})`);
+        throw new Error("Could not load inspection history.");
       }
 
       const data = await response.json();
-      setHistory(Array.isArray(data) ? data : []);
+      const items = Array.isArray(data)
+        ? data
+        : data.inspections ?? data.items ?? [];
+
+      setHistory(items.map(normalizeInspection));
     } catch (err) {
-      setError(
-        `${err.message}. Check that the backend is running on port 8000 and CORS is configured.`
-      );
+      setError((current) => current || err.message);
     } finally {
       setHistoryLoading(false);
     }
@@ -51,17 +98,24 @@ function App() {
 
   async function runInspection(event) {
     event.preventDefault();
+
+    const trimmedUrl = url.trim();
+
+    if (!/^https?:\/\/.+/i.test(trimmedUrl)) {
+      setError("Enter a valid URL beginning with http:// or https://.");
+      return;
+    }
+
     setLoading(true);
     setError("");
-    setInspection(null);
 
     try {
       const response = await fetch(`${API}/api/inspections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url,
-          viewports: ["desktop", "tablet", "mobile"],
+          url: trimmedUrl,
+          viewports: VIEWPORTS,
         }),
       });
 
@@ -69,270 +123,361 @@ function App() {
 
       if (!response.ok) {
         throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : `Inspection failed (${response.status})`
+          data.detail
+            ? JSON.stringify(data.detail)
+            : "The inspection request failed."
         );
       }
 
-      setInspection(data);
+      const result = normalizeInspection(data);
+
+      setInspection(result);
+      setActiveViewport("desktop");
+
       await loadHistory();
     } catch (err) {
-      setError(err.message || "Could not complete the inspection.");
+      setError(
+        `${err.message}. Check that the backend is running at ${API}.`
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  async function openInspection(id) {
+  async function openHistory(item) {
     setError("");
 
-    try {
-      const response = await fetch(
-        `${API}/api/inspections/${encodeURIComponent(id)}`
-      );
+    // Prefer fetching the full record if an ID is available.
+    if (item.id) {
+      try {
+        const response = await fetch(
+          `${API}/api/inspections/${encodeURIComponent(item.id)}`
+        );
 
-      if (!response.ok) {
-        throw new Error(`Could not load inspection (${response.status})`);
+        if (response.ok) {
+          const data = await response.json();
+          setInspection(normalizeInspection(data));
+          setActiveViewport("desktop");
+          return;
+        }
+      } catch {
+        // Fall back to the history record already loaded.
       }
-
-      setInspection(await response.json());
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      setError(err.message);
     }
+
+    setInspection(normalizeInspection(item));
+    setActiveViewport("desktop");
   }
 
-  const screenshots = inspection?.screenshots || {};
-  const findings = inspection?.findings || [];
+  const findings = Array.isArray(inspection?.findings)
+    ? inspection.findings
+    : [];
+
+  const screenshots = inspection?.screenshots ?? {};
+  const activeScreenshot = screenshots[activeViewport] ?? "";
+  const highCount = findings.filter(
+    (item) => severityClass(item.severity) === "high"
+  ).length;
+  const mediumCount = findings.filter(
+    (item) => severityClass(item.severity) === "medium"
+  ).length;
+  const warningCount = findings.filter(
+    (item) => severityClass(item.severity) === "warning"
+  ).length;
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-icon">O</span>
-          <div>
-            <h2>OmniSight</h2>
-            <small>UI Intelligence</small>
-          </div>
-        </div>
+        <a className="brand" href="#dashboard">
+          <span className="brand-mark">O</span>
+          <span>
+            <strong>OmniSight</strong>
+            <small>UI intelligence</small>
+          </span>
+        </a>
 
         <p className="nav-label">WORKSPACE</p>
-        <button className="nav-item active" onClick={() => window.scrollTo(0, 0)}>
-          ◫ &nbsp; Dashboard
-        </button>
+        <a className="nav-item active" href="#dashboard">
+          <span>▦</span> Overview
+        </a>
         <button
-          className="nav-item"
+          className="nav-item nav-button"
           onClick={() =>
             document.getElementById("history")?.scrollIntoView({
               behavior: "smooth",
             })
           }
         >
-          ◷ &nbsp; Inspection History
+          <span>◷</span> Inspection history
         </button>
 
-        <div className="sidebar-footer">
+        <div className="sidebar-bottom">
           <span className="status-dot" />
-          OmniSight API · localhost:8000
+          <span>OmniSight API</span>
+          <small>localhost</small>
         </div>
       </aside>
 
-      <main className="main-content">
+      <main className="main-content" id="dashboard">
         <header className="topbar">
           <div>
-            <p className="eyebrow">WEBSITE QUALITY PLATFORM</p>
+            <p className="eyebrow">RESPONSIVE QUALITY ASSURANCE</p>
             <h1>UI Inspection Dashboard</h1>
-          </div>
-          <span className="version-badge">MVP · v0.1</span>
-        </header>
-
-        <section className="welcome">
-          <div>
-            <p className="eyebrow light">AUTOMATED RESPONSIVE TESTING</p>
-            <h2>See your website from every screen.</h2>
-            <p>
-              Capture screenshots and detect basic responsive layout issues.
+            <p className="muted">
+              Find visual and responsive issues across devices.
             </p>
           </div>
-          <div className="welcome-art" aria-hidden="true">◈</div>
-        </section>
+          <span className="version-pill">MVP · 0.1</span>
+        </header>
 
-        <section className="panel">
-          <h2>Start a new inspection</h2>
-          <p className="muted">
-            Test a website you own or are authorized to inspect.
-          </p>
+        <section className="welcome-panel">
+          <div className="welcome-copy">
+            <span className="section-kicker">WEBSITE ANALYSIS</span>
+            <h2>Inspect your website</h2>
+            <p>
+              Run a multi-viewport scan and review issues detected by
+              OmniSight.
+            </p>
+          </div>
 
           <form className="inspect-form" onSubmit={runInspection}>
             <label htmlFor="website-url">Website URL</label>
-            <div className="input-row">
+            <div className="url-row">
               <input
                 id="website-url"
                 type="url"
-                placeholder="https://example.com"
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://example.com"
                 required
               />
-              <button type="submit" disabled={loading}>
-                {loading ? "Inspecting..." : "▶ Inspect website"}
+              <button className="primary-button" type="submit" disabled={loading}>
+                {loading ? "Inspecting…" : "▶ Run inspection"}
               </button>
             </div>
+            <div className="viewport-hint">
+              <span>✓ Desktop · 1440px</span>
+              <span>✓ Tablet · 768px</span>
+              <span>✓ Mobile · 390px</span>
+            </div>
           </form>
-
-          <div className="viewport-tags">
-            <span>▣ Desktop · 1440px</span>
-            <span>▤ Tablet · 768px</span>
-            <span>▯ Mobile · 390px</span>
-          </div>
         </section>
 
         {error && (
-          <div className="error-message">
+          <div className="error-banner" role="alert">
             <strong>Something went wrong</strong>
-            <p>{error}</p>
-          </div>
-        )}
-
-        {loading && (
-          <div className="panel loading-message">
-            Inspecting the website and capturing screenshots. Please wait...
-          </div>
-        )}
-
-        {inspection && (
-          <section className="panel results-panel">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">INSPECTION RESULTS</p>
-                <h2>{inspection.title || inspection.url}</h2>
-                <p className="muted">{inspection.url}</p>
-              </div>
-              <span className="success-badge">{inspection.status}</span>
-            </div>
-
-            <div className="summary-grid">
-              <div className="summary-card">
-                <span>Screenshots</span>
-                <strong>{Object.keys(screenshots).length}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Findings</span>
-                <strong>{findings.length}</strong>
-              </div>
-              <div className="summary-card">
-                <span>Inspection ID</span>
-                <strong className="id-value">
-                  {inspection.inspection_id?.slice(0, 8) || "—"}
-                </strong>
-              </div>
-            </div>
-
-            <h3 className="subheading">Responsive screenshots</h3>
-
-            {Object.keys(screenshots).length === 0 ? (
-              <p className="empty-state">No screenshots were returned.</p>
-            ) : (
-              <div className="screenshots-grid">
-                {Object.entries(screenshots).map(([name, path]) => (
-                  <article className="screenshot-card" key={name}>
-                    <div className="screenshot-heading">
-                      <h3>{name.charAt(0).toUpperCase() + name.slice(1)}</h3>
-                      <a
-                        href={screenshotUrl(path)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open image ↗
-                      </a>
-                    </div>
-                    <a
-                      href={screenshotUrl(path)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <img
-                        src={screenshotUrl(path)}
-                        alt={`${name} website screenshot`}
-                        onError={(event) => {
-                          event.currentTarget.alt =
-                            "Screenshot could not be loaded. Check the screenshot API path.";
-                        }}
-                      />
-                    </a>
-                  </article>
-                ))}
-              </div>
-            )}
-
-            <h3 className="subheading">Detected findings</h3>
-
-            {findings.length === 0 ? (
-              <p className="empty-state">
-                No issues were detected by the current checks. This does not
-                guarantee that the website has no visual defects.
-              </p>
-            ) : (
-              <div className="findings-list">
-                {findings.map((finding, index) => (
-                  <article
-                    className="finding"
-                    key={`${finding.rule_id}-${index}`}
-                  >
-                    <strong>{finding.rule_id}</strong>
-                    <span className="severity">{finding.severity}</span>
-                    <p>{finding.description}</p>
-                    <small>Viewport: {finding.viewport}</small>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        <section className="panel history-panel" id="history">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">YOUR PREVIOUS RUNS</p>
-              <h2>Inspection history</h2>
-            </div>
-            <button
-              className="secondary-button"
-              onClick={loadHistory}
-              disabled={historyLoading}
-            >
-              {historyLoading ? "Refreshing..." : "Refresh history"}
+            <span>{error}</span>
+            <button onClick={() => setError("")} aria-label="Dismiss error">
+              ×
             </button>
           </div>
+        )}
 
-          {history.length === 0 ? (
-            <p className="empty-state">
-              No saved inspections found. Run an inspection or refresh history.
-            </p>
-          ) : (
-            <div className="history-list">
-              {history.map((item) => (
-                <button
-                  className="history-item"
-                  key={item.id}
-                  onClick={() => openInspection(item.id)}
-                >
-                  <span className="history-icon">◈</span>
-                  <span className="history-details">
-                    <strong>{item.title || item.url}</strong>
-                    <small>{item.url}</small>
-                  </span>
-                  <span className="success-badge">{item.status}</span>
-                  <span>→</span>
-                </button>
-              ))}
+        <section className="section-block">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">LATEST RESULTS</p>
+              <h2>Inspection overview</h2>
             </div>
+            {inspection && (
+              <span className="result-url">{inspection.url}</span>
+            )}
+          </div>
+
+          {!inspection ? (
+            <div className="empty-state">
+              <div className="empty-icon">⌕</div>
+              <h3>Your inspection results will appear here</h3>
+              <p>
+                Enter a website above and select Run inspection to get started.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="stats-grid">
+                <article className="stat-card">
+                  <span className="stat-label">Total findings</span>
+                  <strong>{findings.length}</strong>
+                  <small>Across inspected viewports</small>
+                </article>
+                <article className="stat-card stat-high">
+                  <span className="stat-label">High severity</span>
+                  <strong>{highCount}</strong>
+                  <small>Issues to prioritize</small>
+                </article>
+                <article className="stat-card stat-medium">
+                  <span className="stat-label">Medium severity</span>
+                  <strong>{mediumCount}</strong>
+                  <small>Issues to review</small>
+                </article>
+                <article className="stat-card stat-warning">
+                  <span className="stat-label">Warnings</span>
+                  <strong>{warningCount}</strong>
+                  <small>Potential improvements</small>
+                </article>
+              </div>
+
+              <section className="content-panel screenshot-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Responsive screenshots</h3>
+                    <p>Review the captured layout at each screen size.</p>
+                  </div>
+                  <div className="viewport-tabs" role="tablist">
+                    {VIEWPORTS.map((viewport) => (
+                      <button
+                        key={viewport}
+                        role="tab"
+                        aria-selected={activeViewport === viewport}
+                        className={
+                          activeViewport === viewport ? "tab active" : "tab"
+                        }
+                        onClick={() => setActiveViewport(viewport)}
+                      >
+                        {viewport.charAt(0).toUpperCase() + viewport.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={`screenshot-stage ${activeViewport}`}>
+                  {activeScreenshot ? (
+                    <a
+                      href={screenshotUrl(activeScreenshot)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open screenshot in a new tab"
+                    >
+                      <img
+                        src={screenshotUrl(activeScreenshot)}
+                        alt={`${activeViewport} website screenshot`}
+                      />
+                    </a>
+                  ) : (
+                    <div className="screenshot-empty">
+                      <span>▧</span>
+                      <p>No screenshot available for {activeViewport}.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="content-panel findings-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Detected findings</h3>
+                    <p>Issues identified by the inspection rules.</p>
+                  </div>
+                  <span className="count-pill">{findings.length} total</span>
+                </div>
+
+                {findings.length === 0 ? (
+                  <div className="success-state">
+                    <span>✓</span>
+                    <div>
+                      <strong>No issues detected</strong>
+                      <p>The current rules did not identify any problems.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="findings-list">
+                    {findings.map((finding, index) => (
+                      <article
+                        className="finding-row"
+                        key={`${finding.rule_id ?? finding.type}-${finding.viewport}-${index}`}
+                      >
+                        <span
+                          className={`severity-indicator ${severityClass(
+                            finding.severity
+                          )}`}
+                        />
+                        <div className="finding-main">
+                          <strong>
+                            {(finding.rule_id ?? finding.type ?? "UI issue")
+                              .replaceAll("_", " ")}
+                          </strong>
+                          <p>
+                            {finding.description ??
+                              finding.message ??
+                              "An issue was detected."}
+                          </p>
+                          {finding.evidence && (
+                            <a
+                              className="evidence-link"
+                              href={String(finding.evidence).startsWith("http")
+                                ? finding.evidence
+                                : screenshotUrl(finding.evidence)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View evidence ↗
+                            </a>
+                          )}
+                        </div>
+                        <span
+                          className={`severity-badge ${severityClass(
+                            finding.severity
+                          )}`}
+                        >
+                          {finding.severity ?? "warning"}
+                        </span>
+                        <span className="viewport-badge">
+                          {finding.viewport ?? "—"}
+                        </span>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
           )}
         </section>
 
-        <footer>
-          OmniSight · Multimodal UI Self-Healing &amp; RPA Agent
+        <section className="section-block history-section" id="history">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">YOUR RECENT ACTIVITY</p>
+              <h2>Inspection history</h2>
+            </div>
+            <button className="secondary-button" onClick={loadHistory}>
+              ↻ Refresh
+            </button>
+          </div>
+
+          <div className="content-panel history-panel">
+            {historyLoading ? (
+              <p className="muted">Loading inspection history…</p>
+            ) : history.length === 0 ? (
+              <p className="muted">No saved inspections yet.</p>
+            ) : (
+              history.map((item, index) => (
+                <button
+                  className="history-row"
+                  key={item.id || `${item.url}-${index}`}
+                  onClick={() => openHistory(item)}
+                >
+                  <span className="history-icon">↗</span>
+                  <span className="history-details">
+                    <strong>{item.url || "Unknown website"}</strong>
+                    <small>
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleString()
+                        : "Saved inspection"}
+                    </small>
+                  </span>
+                  <span className="history-count">
+                    {(item.findings ?? []).length} findings
+                  </span>
+                  <span className="history-open">View →</span>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
+        <footer className="footer">
+          <span>OmniSight</span>
+          <span>Responsive inspection · Rule-based detection</span>
         </footer>
       </main>
     </div>
