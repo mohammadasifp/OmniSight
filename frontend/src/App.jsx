@@ -185,6 +185,28 @@ function App() {
     (item) => severityClass(item.severity) === "warning"
   ).length;
 
+const uniqueIssueCount = new Set(
+  findings.map((item) =>
+    item.rule_id ?? item.type ?? item.description ?? item.message
+  )
+).size;
+
+const passedViewports = VIEWPORTS.filter(
+  (viewport) =>
+    !findings.some((finding) => finding.viewport === viewport)
+).length;
+
+const passRate = Math.round(
+  (passedViewports / VIEWPORTS.length) * 100
+);
+
+const viewportStats = VIEWPORTS.map((viewport) => ({
+  name: viewport,
+  count: findings.filter(
+    (finding) => finding.viewport === viewport
+  ).length,
+}));
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -295,6 +317,53 @@ function App() {
           ) : (
             <>
               <div className="stats-grid">
+                
+<section className="quality-panel">
+  <div className="quality-header">
+    <div>
+      <p className="eyebrow">QUALITY SUMMARY</p>
+      <h3>Responsive health</h3>
+    </div>
+    <span className="quality-rate">{passRate}%</span>
+  </div>
+
+  <p className="quality-description">
+    {passedViewports} of {VIEWPORTS.length} viewports had no
+    detected issues. This measures rule-based checks, not overall
+    website quality.
+  </p>
+
+  <div
+    className="quality-progress"
+    role="progressbar"
+    aria-label="Viewport pass rate"
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-valuenow={passRate}
+  >
+    <div
+      className="quality-progress-fill"
+      style={{ width: `${passRate}%` }}
+    />
+  </div>
+
+  <div className="quality-details">
+    <div className="quality-detail">
+      <span>Unique issue types</span>
+      <strong>{uniqueIssueCount}</strong>
+    </div>
+
+    {viewportStats.map((viewport) => (
+      <div className="quality-detail" key={viewport.name}>
+        <span>
+          {viewport.name.charAt(0).toUpperCase() +
+            viewport.name.slice(1)} findings
+        </span>
+        <strong>{viewport.count}</strong>
+      </div>
+    ))}
+  </div>
+</section>
                 <article className="stat-card">
                   <span className="stat-label">Total findings</span>
                   <strong>{findings.length}</strong>
