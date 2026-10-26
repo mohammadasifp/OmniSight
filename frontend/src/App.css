@@ -987,3 +987,47 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.finding-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 10px;
+}
+
+.finding-filters select,
+.finding-filters button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.finding-filters button {
+  cursor: pointer;
+}
+
+.finding-filters button:hover {
+  border-color: #7de0b8;
+}
+
+.filter-result-count {
+  margin: 8px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .finding-filters {
+    flex-direction: column;
+  }
+
+  .finding-filters select,
+  .finding-filters button {
+    width: 100%;
+  }
+}
