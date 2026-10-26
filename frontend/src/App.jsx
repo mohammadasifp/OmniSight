@@ -69,6 +69,10 @@ function App() {
   const [error, setError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(true);
 
+  const [severityFilter, setSeverityFilter] = useState("all");
+const [viewportFilter, setViewportFilter] = useState("all");
+const [issueFilter, setIssueFilter] = useState("all");
+
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
 
@@ -172,6 +176,80 @@ function App() {
   const findings = Array.isArray(inspection?.findings)
     ? inspection.findings
     : [];
+
+<div className="finding-filters">
+  <select
+    value={severityFilter}
+    onChange={(event) => setSeverityFilter(event.target.value)}
+    aria-label="Filter by severity"
+  >
+    <option value="all">All severities</option>
+    <option value="high">High</option>
+    <option value="warning">Warning</option>
+    <option value="low">Low</option>
+  </select>
+
+  <select
+    value={viewportFilter}
+    onChange={(event) => setViewportFilter(event.target.value)}
+    aria-label="Filter by viewport"
+  >
+    <option value="all">All viewports</option>
+    {VIEWPORTS.map((viewport) => (
+      <option key={viewport} value={viewport}>
+        {viewport.charAt(0).toUpperCase() + viewport.slice(1)}
+      </option>
+    ))}
+  </select>
+
+  <select
+    value={issueFilter}
+    onChange={(event) => setIssueFilter(event.target.value)}
+    aria-label="Filter by issue type"
+  >
+    <option value="all">All issue types</option>
+    {issueTypes.map((type) => (
+      <option key={type} value={type}>
+        {type}
+      </option>
+    ))}
+  </select>
+
+  <button
+    type="button"
+    onClick={() => {
+      setSeverityFilter("all");
+      setViewportFilter("all");
+      setIssueFilter("all");
+    }}
+  >
+    Reset filters
+  </button>
+</div>
+
+<p className="filter-result-count">
+  Showing {filteredFindings.length} of {findings.length} findings
+</p>
+
+const issueTypes = [
+  ...new Set(
+    findings.map(
+      (item) => item.rule_id ?? item.type ?? item.description ?? item.message
+    ).filter(Boolean)
+  ),
+];
+
+const filteredFindings = findings.filter((item) => {
+  const severity = String(item.severity ?? "").toLowerCase();
+  const viewport = String(item.viewport ?? "").toLowerCase();
+  const issueType = item.rule_id ?? item.type ?? item.description ?? item.message;
+
+  return (
+    (severityFilter === "all" || severity === severityFilter) &&
+    (viewportFilter === "all" || viewport === viewportFilter) &&
+    (issueFilter === "all" || issueType === issueFilter)
+  );
+});
 
   const screenshots = inspection?.screenshots ?? {};
   const activeScreenshot = screenshots[activeViewport] ?? "";
