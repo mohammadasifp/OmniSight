@@ -54,6 +54,7 @@ def detect_ui_issues(page):
 
     return issues
 
+
 def inspect_website_sync(url: str, inspection_id: str):
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -84,6 +85,19 @@ def inspect_website_sync(url: str, inspection_id: str):
                 page.set_viewport_size(size)
                 page.wait_for_timeout(300)
 
+                # Detect issues at the current viewport.
+                viewport_issues = detect_ui_issues(page)
+
+                for issue in viewport_issues:
+                    results["findings"].append({
+                        "rule_id": issue["type"].upper(),
+                        "severity": issue["severity"],
+                        "viewport": name,
+                        "description": issue["message"],
+                        "evidence": issue.get("element", ""),
+                    })
+
+                # Capture the viewport screenshot.
                 screenshot_path = (
                     SCREENSHOT_DIR / f"{inspection_id}_{name}.png"
                 )
@@ -95,22 +109,7 @@ def inspect_website_sync(url: str, inspection_id: str):
 
                 results["screenshots"][name] = (
                     f"/screenshots/{inspection_id}_{name}.png"
-            )
-
-                has_overflow = page.evaluate(
-                    "() => document.documentElement.scrollWidth > window.innerWidth"
                 )
-
-                if has_overflow:
-                    results["findings"].append({
-                        "rule_id": "RESPONSIVE_HORIZONTAL_OVERFLOW",
-                        "severity": "high" if name == "mobile" else "medium",
-                        "viewport": name,
-                        "description": (
-                            f"Horizontal overflow detected at {name} size."
-                        ),
-                        "evidence": str(screenshot_path),
-                    })
 
         finally:
             browser.close()

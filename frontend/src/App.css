@@ -953,9 +953,7 @@ h3 {
 }
 
 
-/* ================================
-   FINDINGS FILTERS
-================================ */
+
 
 .finding-filters {
   display: flex;
@@ -1000,7 +998,7 @@ h3 {
   color: #f4f6ff;
 }
 
-/* Reset button */
+
 
 .reset-filters-button {
   min-height: 40px;
@@ -1027,7 +1025,7 @@ h3 {
   outline-offset: 3px;
 }
 
-/* Filter result count */
+
 
 .filter-result-count {
   margin: 0;
@@ -1036,7 +1034,7 @@ h3 {
   font-size: 12px;
 }
 
-/* No matching findings */
+
 
 .filter-empty {
   margin: 12px 16px 18px;
@@ -1049,7 +1047,7 @@ h3 {
   text-align: center;
 }
 
-/* Responsive filters on smaller screens */
+
 
 @media (max-width: 640px) {
   .finding-filters {
