@@ -900,6 +900,7 @@ h3 {
     flex-direction: column;
   }
 }
+<<<<<<< HEAD
 .finding-filters {
   display: flex;
   flex-wrap: wrap;
@@ -938,10 +939,126 @@ h3 {
 
 .reset-filters-button:hover {
   background: #252143;
+=======
+
+.quality-panel {
+  margin-bottom: 22px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.quality-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.quality-header .eyebrow {
+  margin-bottom: 8px;
+}
+
+.quality-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.quality-rate {
+  color: #7de0b8;
+  font-size: 30px;
+  font-weight: 750;
+}
+
+.quality-description {
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.quality-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #293248;
+}
+
+.quality-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6557d9, #69d9b0);
+  transition: width 250ms ease;
+}
+
+.quality-details {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.quality-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0d1422;
+}
+
+.quality-detail span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.quality-detail strong {
+  font-size: 21px;
+}
+
+@media (max-width: 720px) {
+  .quality-panel {
+    padding: 16px;
+  }
+
+  .quality-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.finding-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 10px;
+}
+
+.finding-filters select,
+.finding-filters button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.finding-filters button {
+  cursor: pointer;
+}
+
+.finding-filters button:hover {
+  border-color: #7de0b8;
+>>>>>>> 4ec6b2657d95e2ab2311765d083548bf0f9dcd2b
 }
 
 .filter-result-count {
   margin: 8px 0 14px;
+<<<<<<< HEAD
   color: #6b7280;
   font-size: 13px;
 }
@@ -1072,3 +1189,19 @@ h3 {
     padding: 10px 12px;
   }
 }
+=======
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .finding-filters {
+    flex-direction: column;
+  }
+
+  .finding-filters select,
+  .finding-filters button {
+    width: 100%;
+  }
+}
+>>>>>>> 4ec6b2657d95e2ab2311765d083548bf0f9dcd2b
