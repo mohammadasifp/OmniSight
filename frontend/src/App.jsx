@@ -34,7 +34,6 @@ function normalizeInspection(item = {}) {
 function screenshotUrl(path) {
   if (!path) return "";
 
-  // Handle paths returned by the backend.
   if (/^https?:\/\//i.test(path)) {
     try {
       const parsed = new URL(path);
@@ -44,9 +43,7 @@ function screenshotUrl(path) {
     }
   }
 
-  // Handle old absolute Windows paths, if present in history.
   const filename = path.split(/[\\/]/).pop();
-
   return `${API}/screenshots/${encodeURIComponent(filename)}`;
 }
 
@@ -68,6 +65,10 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [viewportFilter, setViewportFilter] = useState("all");
+  const [issueTypeFilter, setIssueTypeFilter] = useState("all");
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -133,6 +134,7 @@ function App() {
 
       setInspection(result);
       setActiveViewport("desktop");
+      resetFilters();
 
       await loadHistory();
     } catch (err) {
@@ -144,10 +146,15 @@ function App() {
     }
   }
 
+  function resetFilters() {
+    setSeverityFilter("all");
+    setViewportFilter("all");
+    setIssueTypeFilter("all");
+  }
+
   async function openHistory(item) {
     setError("");
 
-    // Prefer fetching the full record if an ID is available.
     if (item.id) {
       try {
         const response = await fetch(
@@ -158,6 +165,7 @@ function App() {
           const data = await response.json();
           setInspection(normalizeInspection(data));
           setActiveViewport("desktop");
+          resetFilters();
           return;
         }
       } catch {
@@ -167,20 +175,50 @@ function App() {
 
     setInspection(normalizeInspection(item));
     setActiveViewport("desktop");
+    resetFilters();
   }
 
   const findings = Array.isArray(inspection?.findings)
     ? inspection.findings
     : [];
 
+  const issueTypes = [
+    ...new Set(
+      findings.map((finding) =>
+        finding.rule_id ?? finding.type ?? "UI issue"
+      )
+    ),
+  ];
+
+  const filteredFindings = findings.filter((finding) => {
+    const severityMatches =
+      severityFilter === "all" ||
+      severityClass(finding.severity) === severityFilter;
+
+    const viewportMatches =
+      viewportFilter === "all" ||
+      String(finding.viewport ?? "").toLowerCase() === viewportFilter;
+
+    const issueType =
+      finding.rule_id ?? finding.type ?? "UI issue";
+
+    const issueTypeMatches =
+      issueTypeFilter === "all" || issueType === issueTypeFilter;
+
+    return severityMatches && viewportMatches && issueTypeMatches;
+  });
+
   const screenshots = inspection?.screenshots ?? {};
   const activeScreenshot = screenshots[activeViewport] ?? "";
+
   const highCount = findings.filter(
     (item) => severityClass(item.severity) === "high"
   ).length;
+
   const mediumCount = findings.filter(
     (item) => severityClass(item.severity) === "medium"
   ).length;
+
   const warningCount = findings.filter(
     (item) => severityClass(item.severity) === "warning"
   ).length;
@@ -197,9 +235,11 @@ function App() {
         </a>
 
         <p className="nav-label">WORKSPACE</p>
+
         <a className="nav-item active" href="#dashboard">
           <span>▦</span> Overview
         </a>
+
         <button
           className="nav-item nav-button"
           onClick={() =>
@@ -242,6 +282,7 @@ function App() {
 
           <form className="inspect-form" onSubmit={runInspection}>
             <label htmlFor="website-url">Website URL</label>
+
             <div className="url-row">
               <input
                 id="website-url"
@@ -251,10 +292,16 @@ function App() {
                 placeholder="https://example.com"
                 required
               />
-              <button className="primary-button" type="submit" disabled={loading}>
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={loading}
+              >
                 {loading ? "Inspecting…" : "▶ Run inspection"}
               </button>
             </div>
+
             <div className="viewport-hint">
               <span>✓ Desktop · 1440px</span>
               <span>✓ Tablet · 768px</span>
@@ -267,7 +314,10 @@ function App() {
           <div className="error-banner" role="alert">
             <strong>Something went wrong</strong>
             <span>{error}</span>
-            <button onClick={() => setError("")} aria-label="Dismiss error">
+            <button
+              onClick={() => setError("")}
+              aria-label="Dismiss error"
+            >
               ×
             </button>
           </div>
@@ -279,6 +329,7 @@ function App() {
               <p className="eyebrow">LATEST RESULTS</p>
               <h2>Inspection overview</h2>
             </div>
+
             {inspection && (
               <span className="result-url">{inspection.url}</span>
             )}
@@ -300,16 +351,19 @@ function App() {
                   <strong>{findings.length}</strong>
                   <small>Across inspected viewports</small>
                 </article>
+
                 <article className="stat-card stat-high">
                   <span className="stat-label">High severity</span>
                   <strong>{highCount}</strong>
                   <small>Issues to prioritize</small>
                 </article>
+
                 <article className="stat-card stat-medium">
                   <span className="stat-label">Medium severity</span>
                   <strong>{mediumCount}</strong>
                   <small>Issues to review</small>
                 </article>
+
                 <article className="stat-card stat-warning">
                   <span className="stat-label">Warnings</span>
                   <strong>{warningCount}</strong>
@@ -323,6 +377,7 @@ function App() {
                     <h3>Responsive screenshots</h3>
                     <p>Review the captured layout at each screen size.</p>
                   </div>
+
                   <div className="viewport-tabs" role="tablist">
                     {VIEWPORTS.map((viewport) => (
                       <button
@@ -368,45 +423,112 @@ function App() {
                     <h3>Detected findings</h3>
                     <p>Issues identified by the inspection rules.</p>
                   </div>
-                  <span className="count-pill">{findings.length} total</span>
+
+                  <span className="count-pill">
+                    {findings.length} total
+                  </span>
                 </div>
 
-                {findings.length === 0 ? (
-                  <div className="success-state">
-                    <span>✓</span>
-                    <div>
-                      <strong>No issues detected</strong>
-                      <p>The current rules did not identify any problems.</p>
-                    </div>
-                  </div>
+                <div className="finding-filters">
+                  <label>
+                    Severity
+                    <select
+                      value={severityFilter}
+                      onChange={(event) =>
+                        setSeverityFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All severities</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                      <option value="warning">Warning</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Viewport
+                    <select
+                      value={viewportFilter}
+                      onChange={(event) =>
+                        setViewportFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All viewports</option>
+                      <option value="desktop">Desktop</option>
+                      <option value="tablet">Tablet</option>
+                      <option value="mobile">Mobile</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Issue type
+                    <select
+                      value={issueTypeFilter}
+                      onChange={(event) =>
+                        setIssueTypeFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All issue types</option>
+                      {issueTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    className="reset-filters-button"
+                    onClick={resetFilters}
+                  >
+                    Reset filters
+                  </button>
+                </div>
+
+                <p className="filter-result-count" aria-live="polite">
+                  Showing {filteredFindings.length} of {findings.length} findings
+                </p>
+
+                {filteredFindings.length === 0 ? (
+                  <p className="filter-empty">
+                    No findings match the selected filters. Try changing or
+                    resetting them.
+                  </p>
                 ) : (
                   <div className="findings-list">
-                    {findings.map((finding, index) => (
+                    {filteredFindings.map((finding, index) => (
                       <article
                         className="finding-row"
-                        key={`${finding.rule_id ?? finding.type}-${finding.viewport}-${index}`}
+                        key={`${finding.rule_id ?? finding.type ?? "issue"}-${finding.viewport ?? "unknown"}-${index}`}
                       >
                         <span
                           className={`severity-indicator ${severityClass(
                             finding.severity
                           )}`}
                         />
+
                         <div className="finding-main">
                           <strong>
                             {(finding.rule_id ?? finding.type ?? "UI issue")
                               .replaceAll("_", " ")}
                           </strong>
+
                           <p>
                             {finding.description ??
                               finding.message ??
                               "An issue was detected."}
                           </p>
+
                           {finding.evidence && (
                             <a
                               className="evidence-link"
-                              href={String(finding.evidence).startsWith("http")
-                                ? finding.evidence
-                                : screenshotUrl(finding.evidence)}
+                              href={
+                                String(finding.evidence).startsWith("http")
+                                  ? finding.evidence
+                                  : screenshotUrl(finding.evidence)
+                              }
                               target="_blank"
                               rel="noreferrer"
                             >
@@ -414,6 +536,7 @@ function App() {
                             </a>
                           )}
                         </div>
+
                         <span
                           className={`severity-badge ${severityClass(
                             finding.severity
@@ -421,6 +544,7 @@ function App() {
                         >
                           {finding.severity ?? "warning"}
                         </span>
+
                         <span className="viewport-badge">
                           {finding.viewport ?? "—"}
                         </span>
@@ -439,6 +563,7 @@ function App() {
               <p className="eyebrow">YOUR RECENT ACTIVITY</p>
               <h2>Inspection history</h2>
             </div>
+
             <button className="secondary-button" onClick={loadHistory}>
               ↻ Refresh
             </button>
@@ -457,6 +582,7 @@ function App() {
                   onClick={() => openHistory(item)}
                 >
                   <span className="history-icon">↗</span>
+
                   <span className="history-details">
                     <strong>{item.url || "Unknown website"}</strong>
                     <small>
@@ -465,9 +591,11 @@ function App() {
                         : "Saved inspection"}
                     </small>
                   </span>
+
                   <span className="history-count">
                     {(item.findings ?? []).length} findings
                   </span>
+
                   <span className="history-open">View →</span>
                 </button>
               ))
