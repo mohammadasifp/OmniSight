@@ -187,7 +187,7 @@ const [issueFilter, setIssueFilter] = useState("all");
     ? inspection.findings
     : [];
 
-<<<<<<< HEAD
+
   const issueTypes = [
     ...new Set(
       findings.map((finding) =>
@@ -303,6 +303,18 @@ const filteredFindings = findings.filter((item) => {
   const warningCount = findings.filter(
     (item) => severityClass(item.severity) === "warning"
   ).length;
+
+const lowCount = findings.filter(
+  (item) => severityClass(item.severity) === "low"
+).length;
+
+const severitySummary = [
+  { label: "High", count: highCount, className: "high" },
+  { label: "Medium", count: mediumCount, className: "medium" },
+  { label: "Warning", count: warningCount, className: "warning" },
+  { label: "Low", count: lowCount, className: "low" },
+];
+
 
 const uniqueIssueCount = new Set(
   findings.map((item) =>
@@ -522,6 +534,45 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
               </div>
 
               <section className="content-panel screenshot-panel">
+
+<section className="content-panel severity-summary">
+  <div className="panel-heading">
+    <div>
+      <h3>Severity breakdown</h3>
+      <p>Distribution of detected UI issues.</p>
+    </div>
+    <span className="count-pill">{findings.length} findings</span>
+  </div>
+
+  <div className="severity-summary-list">
+    {severitySummary.map((item) => {
+      const percentage =
+        findings.length > 0
+          ? Math.round((item.count / findings.length) * 100)
+          : 0;
+
+      return (
+        <div className="severity-summary-item" key={item.label}>
+          <div className="severity-summary-label">
+            <span>{item.label}</span>
+            <strong>
+              {item.count} ({percentage}%)
+            </strong>
+          </div>
+
+          <div className="severity-summary-track">
+            <div
+              className={`severity-summary-fill ${item.className}`}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</section>
+
+
                 <div className="panel-heading">
                   <div>
                     <h3>Responsive screenshots</h3>
