@@ -900,7 +900,6 @@ h3 {
     flex-direction: column;
   }
 }
-<<<<<<< HEAD
 .finding-filters {
   display: flex;
   flex-wrap: wrap;
@@ -939,7 +938,7 @@ h3 {
 
 .reset-filters-button:hover {
   background: #252143;
-=======
+
 
 .quality-panel {
   margin-bottom: 22px;
@@ -1204,4 +1203,43 @@ h3 {
     width: 100%;
   }
 }
->>>>>>> 4ec6b2657d95e2ab2311765d083548bf0f9dcd2b
+
+
+/* Export Inspection Report */
+
+.findings-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.export-button {
+  min-height: 38px;
+  padding: 9px 15px;
+  border: 1px solid #7865e8;
+  border-radius: 8px;
+  background: #5140b8;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.export-button:hover {
+  background: #6652d5;
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .findings-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+

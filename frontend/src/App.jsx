@@ -57,6 +57,57 @@ function severityClass(severity = "warning") {
   return "warning";
 }
 
+
+function exportFindingsCSV(findings, inspection) {
+  const headers = [
+    "Website",
+    "Issue Type",
+    "Description",
+    "Severity",
+    "Viewport",
+    "Evidence",
+  ];
+
+  const escapeCSV = (value) => {
+    const text = String(value ?? "");
+    return `"${text.replaceAll('"', '""')}"`;
+  };
+
+  const rows = findings.map((finding) => [
+    inspection?.url ?? "",
+    finding.rule_id ?? finding.type ?? "UI issue",
+    finding.description ?? finding.message ?? "",
+    finding.severity ?? "warning",
+    finding.viewport ?? "",
+    finding.evidence ?? "",
+  ]);
+
+  const csvContent = [
+    headers,
+    ...rows,
+  ]
+    .map((row) => row.map(escapeCSV).join(","))
+    .join("\r\n");
+
+  const blob = new Blob(
+    ["\uFEFF" + csvContent],
+    { type: "text/csv;charset=utf-8;" }
+  );
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = downloadUrl;
+  link.download = "omnisight-inspection-report.csv";
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(downloadUrl);
+}
+
+
 function App() {
   const [url, setUrl] = useState("https://example.com");
   const [inspection, setInspection] = useState(null);
@@ -66,14 +117,10 @@ function App() {
   const [error, setError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(true);
 
+  // Finding filters
   const [severityFilter, setSeverityFilter] = useState("all");
-<<<<<<< HEAD
   const [viewportFilter, setViewportFilter] = useState("all");
   const [issueTypeFilter, setIssueTypeFilter] = useState("all");
-=======
-const [viewportFilter, setViewportFilter] = useState("all");
-const [issueFilter, setIssueFilter] = useState("all");
->>>>>>> 4ec6b2657d95e2ab2311765d083548bf0f9dcd2b
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -86,6 +133,7 @@ const [issueFilter, setIssueFilter] = useState("all");
       }
 
       const data = await response.json();
+
       const items = Array.isArray(data)
         ? data
         : data.inspections ?? data.items ?? [];
@@ -101,6 +149,12 @@ const [issueFilter, setIssueFilter] = useState("all");
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  function resetFilters() {
+    setSeverityFilter("all");
+    setViewportFilter("all");
+    setIssueTypeFilter("all");
+  }
 
   async function runInspection(event) {
     event.preventDefault();
@@ -151,12 +205,6 @@ const [issueFilter, setIssueFilter] = useState("all");
     }
   }
 
-  function resetFilters() {
-    setSeverityFilter("all");
-    setViewportFilter("all");
-    setIssueTypeFilter("all");
-  }
-
   async function openHistory(item) {
     setError("");
 
@@ -168,6 +216,7 @@ const [issueFilter, setIssueFilter] = useState("all");
 
         if (response.ok) {
           const data = await response.json();
+
           setInspection(normalizeInspection(data));
           setActiveViewport("desktop");
           resetFilters();
@@ -183,19 +232,28 @@ const [issueFilter, setIssueFilter] = useState("all");
     resetFilters();
   }
 
+  // Inspection findings
   const findings = Array.isArray(inspection?.findings)
     ? inspection.findings
     : [];
 
-
+  // Unique issue types for the filter
   const issueTypes = [
     ...new Set(
-      findings.map((finding) =>
-        finding.rule_id ?? finding.type ?? "UI issue"
-      )
+      findings
+        .map(
+          (finding) =>
+            finding.rule_id ??
+            finding.type ??
+            finding.description ??
+            finding.message ??
+            "UI issue"
+        )
+        .filter(Boolean)
     ),
   ];
 
+  // Apply all finding filters
   const filteredFindings = findings.filter((finding) => {
     const severityMatches =
       severityFilter === "all" ||
@@ -206,92 +264,23 @@ const [issueFilter, setIssueFilter] = useState("all");
       String(finding.viewport ?? "").toLowerCase() === viewportFilter;
 
     const issueType =
-      finding.rule_id ?? finding.type ?? "UI issue";
+      finding.rule_id ??
+      finding.type ??
+      finding.description ??
+      finding.message ??
+      "UI issue";
 
     const issueTypeMatches =
       issueTypeFilter === "all" || issueType === issueTypeFilter;
 
     return severityMatches && viewportMatches && issueTypeMatches;
   });
-=======
-<div className="finding-filters">
-  <select
-    value={severityFilter}
-    onChange={(event) => setSeverityFilter(event.target.value)}
-    aria-label="Filter by severity"
-  >
-    <option value="all">All severities</option>
-    <option value="high">High</option>
-    <option value="warning">Warning</option>
-    <option value="low">Low</option>
-  </select>
 
-  <select
-    value={viewportFilter}
-    onChange={(event) => setViewportFilter(event.target.value)}
-    aria-label="Filter by viewport"
-  >
-    <option value="all">All viewports</option>
-    {VIEWPORTS.map((viewport) => (
-      <option key={viewport} value={viewport}>
-        {viewport.charAt(0).toUpperCase() + viewport.slice(1)}
-      </option>
-    ))}
-  </select>
-
-  <select
-    value={issueFilter}
-    onChange={(event) => setIssueFilter(event.target.value)}
-    aria-label="Filter by issue type"
-  >
-    <option value="all">All issue types</option>
-    {issueTypes.map((type) => (
-      <option key={type} value={type}>
-        {type}
-      </option>
-    ))}
-  </select>
-
-  <button
-    type="button"
-    onClick={() => {
-      setSeverityFilter("all");
-      setViewportFilter("all");
-      setIssueFilter("all");
-    }}
-  >
-    Reset filters
-  </button>
-</div>
-
-<p className="filter-result-count">
-  Showing {filteredFindings.length} of {findings.length} findings
-</p>
-
-const issueTypes = [
-  ...new Set(
-    findings.map(
-      (item) => item.rule_id ?? item.type ?? item.description ?? item.message
-    ).filter(Boolean)
-  ),
-];
-
-const filteredFindings = findings.filter((item) => {
-  const severity = String(item.severity ?? "").toLowerCase();
-  const viewport = String(item.viewport ?? "").toLowerCase();
-  const issueType = item.rule_id ?? item.type ?? item.description ?? item.message;
-
-  return (
-    (severityFilter === "all" || severity === severityFilter) &&
-    (viewportFilter === "all" || viewport === viewportFilter) &&
-    (issueFilter === "all" || issueType === issueFilter)
-  );
-});
->>>>>>> 4ec6b2657d95e2ab2311765d083548bf0f9dcd2b
-
+  // Screenshots
   const screenshots = inspection?.screenshots ?? {};
   const activeScreenshot = screenshots[activeViewport] ?? "";
 
+  // Severity counts
   const highCount = findings.filter(
     (item) => severityClass(item.severity) === "high"
   ).length;
@@ -304,45 +293,55 @@ const filteredFindings = findings.filter((item) => {
     (item) => severityClass(item.severity) === "warning"
   ).length;
 
-const lowCount = findings.filter(
-  (item) => severityClass(item.severity) === "low"
-).length;
+  const lowCount = findings.filter(
+    (item) => severityClass(item.severity) === "low"
+  ).length;
 
-const severitySummary = [
-  { label: "High", count: highCount, className: "high" },
-  { label: "Medium", count: mediumCount, className: "medium" },
-  { label: "Warning", count: warningCount, className: "warning" },
-  { label: "Low", count: lowCount, className: "low" },
-];
+  // Severity breakdown data
+  const severitySummary = [
+    { label: "High", count: highCount, className: "high" },
+    { label: "Medium", count: mediumCount, className: "medium" },
+    { label: "Warning", count: warningCount, className: "warning" },
+    { label: "Low", count: lowCount, className: "low" },
+  ];
 
+  // Quality summary
+  const uniqueIssueCount = new Set(
+    findings.map(
+      (item) =>
+        item.rule_id ??
+        item.type ??
+        item.description ??
+        item.message
+    )
+  ).size;
 
-const uniqueIssueCount = new Set(
-  findings.map((item) =>
-    item.rule_id ?? item.type ?? item.description ?? item.message
-  )
-).size;
+  const passedViewports = VIEWPORTS.filter(
+    (viewport) =>
+      !findings.some(
+        (finding) =>
+          String(finding.viewport ?? "").toLowerCase() === viewport
+      )
+  ).length;
 
-const passedViewports = VIEWPORTS.filter(
-  (viewport) =>
-    !findings.some((finding) => finding.viewport === viewport)
-).length;
+  const passRate = Math.round(
+    (passedViewports / VIEWPORTS.length) * 100
+  );
 
-const passRate = Math.round(
-  (passedViewports / VIEWPORTS.length) * 100
-);
-
-const viewportStats = VIEWPORTS.map((viewport) => ({
-  name: viewport,
-  count: findings.filter(
-    (finding) => finding.viewport === viewport
-  ).length,
-}));
+  const viewportStats = VIEWPORTS.map((viewport) => ({
+    name: viewport,
+    count: findings.filter(
+      (finding) =>
+        String(finding.viewport ?? "").toLowerCase() === viewport
+    ).length,
+  }));
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <a className="brand" href="#dashboard">
           <span className="brand-mark">O</span>
+
           <span>
             <strong>OmniSight</strong>
             <small>UI intelligence</small>
@@ -378,17 +377,21 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
           <div>
             <p className="eyebrow">RESPONSIVE QUALITY ASSURANCE</p>
             <h1>UI Inspection Dashboard</h1>
+
             <p className="muted">
               Find visual and responsive issues across devices.
             </p>
           </div>
+
           <span className="version-pill">MVP · 0.1</span>
         </header>
 
         <section className="welcome-panel">
           <div className="welcome-copy">
             <span className="section-kicker">WEBSITE ANALYSIS</span>
+
             <h2>Inspect your website</h2>
+
             <p>
               Run a multi-viewport scan and review issues detected by
               OmniSight.
@@ -429,6 +432,7 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
           <div className="error-banner" role="alert">
             <strong>Something went wrong</strong>
             <span>{error}</span>
+
             <button
               onClick={() => setError("")}
               aria-label="Dismiss error"
@@ -453,61 +457,68 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
           {!inspection ? (
             <div className="empty-state">
               <div className="empty-icon">⌕</div>
+
               <h3>Your inspection results will appear here</h3>
+
               <p>
-                Enter a website above and select Run inspection to get started.
+                Enter a website above and select Run inspection to get
+                started.
               </p>
             </div>
           ) : (
             <>
+              {/* Statistics */}
               <div className="stats-grid">
-                
-<section className="quality-panel">
-  <div className="quality-header">
-    <div>
-      <p className="eyebrow">QUALITY SUMMARY</p>
-      <h3>Responsive health</h3>
-    </div>
-    <span className="quality-rate">{passRate}%</span>
-  </div>
+                <section className="quality-panel">
+                  <div className="quality-header">
+                    <div>
+                      <p className="eyebrow">QUALITY SUMMARY</p>
+                      <h3>Responsive health</h3>
+                    </div>
 
-  <p className="quality-description">
-    {passedViewports} of {VIEWPORTS.length} viewports had no
-    detected issues. This measures rule-based checks, not overall
-    website quality.
-  </p>
+                    <span className="quality-rate">{passRate}%</span>
+                  </div>
 
-  <div
-    className="quality-progress"
-    role="progressbar"
-    aria-label="Viewport pass rate"
-    aria-valuemin={0}
-    aria-valuemax={100}
-    aria-valuenow={passRate}
-  >
-    <div
-      className="quality-progress-fill"
-      style={{ width: `${passRate}%` }}
-    />
-  </div>
+                  <p className="quality-description">
+                    {passedViewports} of {VIEWPORTS.length} viewports had no
+                    detected issues. This measures rule-based checks, not
+                    overall website quality.
+                  </p>
 
-  <div className="quality-details">
-    <div className="quality-detail">
-      <span>Unique issue types</span>
-      <strong>{uniqueIssueCount}</strong>
-    </div>
+                  <div
+                    className="quality-progress"
+                    role="progressbar"
+                    aria-label="Viewport pass rate"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={passRate}
+                  >
+                    <div
+                      className="quality-progress-fill"
+                      style={{ width: `${passRate}%` }}
+                    />
+                  </div>
 
-    {viewportStats.map((viewport) => (
-      <div className="quality-detail" key={viewport.name}>
-        <span>
-          {viewport.name.charAt(0).toUpperCase() +
-            viewport.name.slice(1)} findings
-        </span>
-        <strong>{viewport.count}</strong>
-      </div>
-    ))}
-  </div>
-</section>
+                  <div className="quality-details">
+                    <div className="quality-detail">
+                      <span>Unique issue types</span>
+                      <strong>{uniqueIssueCount}</strong>
+                    </div>
+
+                    {viewportStats.map((viewport) => (
+                      <div className="quality-detail" key={viewport.name}>
+                        <span>
+                          {viewport.name.charAt(0).toUpperCase() +
+                            viewport.name.slice(1)}{" "}
+                          findings
+                        </span>
+
+                        <strong>{viewport.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
                 <article className="stat-card">
                   <span className="stat-label">Total findings</span>
                   <strong>{findings.length}</strong>
@@ -533,50 +544,61 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                 </article>
               </div>
 
+              {/* Severity Breakdown */}
+              <section className="content-panel severity-summary">
+                <div className="panel-heading">
+                  <div>
+                    <h3>Severity breakdown</h3>
+                    <p>Distribution of detected UI issues.</p>
+                  </div>
+
+                  <span className="count-pill">
+                    {findings.length} findings
+                  </span>
+                </div>
+
+                <div className="severity-summary-list">
+                  {severitySummary.map((item) => {
+                    const percentage =
+                      findings.length > 0
+                        ? Math.round(
+                            (item.count / findings.length) * 100
+                          )
+                        : 0;
+
+                    return (
+                      <div
+                        className="severity-summary-item"
+                        key={item.label}
+                      >
+                        <div className="severity-summary-label">
+                          <span>{item.label}</span>
+
+                          <strong>
+                            {item.count} ({percentage}%)
+                          </strong>
+                        </div>
+
+                        <div className="severity-summary-track">
+                          <div
+                            className={`severity-summary-fill ${item.className}`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Responsive Screenshots */}
               <section className="content-panel screenshot-panel">
-
-<section className="content-panel severity-summary">
-  <div className="panel-heading">
-    <div>
-      <h3>Severity breakdown</h3>
-      <p>Distribution of detected UI issues.</p>
-    </div>
-    <span className="count-pill">{findings.length} findings</span>
-  </div>
-
-  <div className="severity-summary-list">
-    {severitySummary.map((item) => {
-      const percentage =
-        findings.length > 0
-          ? Math.round((item.count / findings.length) * 100)
-          : 0;
-
-      return (
-        <div className="severity-summary-item" key={item.label}>
-          <div className="severity-summary-label">
-            <span>{item.label}</span>
-            <strong>
-              {item.count} ({percentage}%)
-            </strong>
-          </div>
-
-          <div className="severity-summary-track">
-            <div
-              className={`severity-summary-fill ${item.className}`}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-        </div>
-      );
-    })}
-  </div>
-</section>
-
-
                 <div className="panel-heading">
                   <div>
                     <h3>Responsive screenshots</h3>
-                    <p>Review the captured layout at each screen size.</p>
+                    <p>
+                      Review the captured layout at each screen size.
+                    </p>
                   </div>
 
                   <div className="viewport-tabs" role="tablist">
@@ -590,7 +612,8 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                         }
                         onClick={() => setActiveViewport(viewport)}
                       >
-                        {viewport.charAt(0).toUpperCase() + viewport.slice(1)}
+                        {viewport.charAt(0).toUpperCase() +
+                          viewport.slice(1)}
                       </button>
                     ))}
                   </div>
@@ -612,27 +635,47 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                   ) : (
                     <div className="screenshot-empty">
                       <span>▧</span>
-                      <p>No screenshot available for {activeViewport}.</p>
+                      <p>
+                        No screenshot available for {activeViewport}.
+                      </p>
                     </div>
                   )}
                 </div>
               </section>
 
+              {/* Detected Findings */}
               <section className="content-panel findings-panel">
+                
                 <div className="panel-heading">
                   <div>
                     <h3>Detected findings</h3>
                     <p>Issues identified by the inspection rules.</p>
                   </div>
 
-                  <span className="count-pill">
-                    {findings.length} total
-                  </span>
+                  <div className="findings-actions">
+                    <span className="count-pill">
+                      {findings.length} total
+                    </span>
+
+                    <button
+                      type="button"
+                      className="export-button"
+                      onClick={() =>
+                        exportFindingsCSV(filteredFindings, inspection)
+                      }
+                      disabled={filteredFindings.length === 0}
+                    >
+                      ↓ Export CSV
+                    </button>
+                  </div>
                 </div>
 
+
+                {/* Finding Filters */}
                 <div className="finding-filters">
                   <label>
                     Severity
+
                     <select
                       value={severityFilter}
                       onChange={(event) =>
@@ -649,6 +692,7 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
 
                   <label>
                     Viewport
+
                     <select
                       value={viewportFilter}
                       onChange={(event) =>
@@ -656,14 +700,19 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                       }
                     >
                       <option value="all">All viewports</option>
-                      <option value="desktop">Desktop</option>
-                      <option value="tablet">Tablet</option>
-                      <option value="mobile">Mobile</option>
+
+                      {VIEWPORTS.map((viewport) => (
+                        <option key={viewport} value={viewport}>
+                          {viewport.charAt(0).toUpperCase() +
+                            viewport.slice(1)}
+                        </option>
+                      ))}
                     </select>
                   </label>
 
                   <label>
                     Issue type
+
                     <select
                       value={issueTypeFilter}
                       onChange={(event) =>
@@ -671,6 +720,7 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                       }
                     >
                       <option value="all">All issue types</option>
+
                       {issueTypes.map((type) => (
                         <option key={type} value={type}>
                           {type}
@@ -689,13 +739,14 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
                 </div>
 
                 <p className="filter-result-count" aria-live="polite">
-                  Showing {filteredFindings.length} of {findings.length} findings
+                  Showing {filteredFindings.length} of {findings.length}{" "}
+                  findings
                 </p>
 
                 {filteredFindings.length === 0 ? (
                   <p className="filter-empty">
-                    No findings match the selected filters. Try changing or
-                    resetting them.
+                    No findings match the selected filters. Try changing
+                    or resetting them.
                   </p>
                 ) : (
                   <div className="findings-list">
@@ -712,8 +763,11 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
 
                         <div className="finding-main">
                           <strong>
-                            {(finding.rule_id ?? finding.type ?? "UI issue")
-                              .replaceAll("_", " ")}
+                            {(
+                              finding.rule_id ??
+                              finding.type ??
+                              "UI issue"
+                            ).replaceAll("_", " ")}
                           </strong>
 
                           <p>
@@ -758,7 +812,11 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
           )}
         </section>
 
-        <section className="section-block history-section" id="history">
+        {/* Inspection History */}
+        <section
+          className="section-block history-section"
+          id="history"
+        >
           <div className="section-heading">
             <div>
               <p className="eyebrow">YOUR RECENT ACTIVITY</p>
@@ -786,6 +844,7 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
 
                   <span className="history-details">
                     <strong>{item.url || "Unknown website"}</strong>
+
                     <small>
                       {item.created_at
                         ? new Date(item.created_at).toLocaleString()
@@ -806,7 +865,9 @@ const viewportStats = VIEWPORTS.map((viewport) => ({
 
         <footer className="footer">
           <span>OmniSight</span>
-          <span>Responsive inspection · Rule-based detection</span>
+          <span>
+            Responsive inspection · Rule-based detection
+          </span>
         </footer>
       </main>
     </div>
