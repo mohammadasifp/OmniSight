@@ -118,9 +118,8 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(true);
 
   // Finding filters
-  const [severityFilter, setSeverityFilter] = useState("all");
   const [viewportFilter, setViewportFilter] = useState("all");
-  const [issueTypeFilter, setIssueTypeFilter] = useState("all");
+const [issueFilter, setIssueFilter] = useState("all");
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -234,24 +233,40 @@ function App() {
 
   // Inspection findings
   const findings = Array.isArray(inspection?.findings)
-    ? inspection.findings
-    : [];
+  ? inspection.findings
+  : [];
 
-  // Unique issue types for the filter
-  const issueTypes = [
-    ...new Set(
-      findings
-        .map(
-          (finding) =>
-            finding.rule_id ??
-            finding.type ??
-            finding.description ??
-            finding.message ??
-            "UI issue"
-        )
-        .filter(Boolean)
-    ),
-  ];
+const issueTypes = [
+  ...new Set(
+    findings.map(
+      (finding) =>
+        finding.rule_id ?? finding.type ?? "UI issue"
+    )
+  ),
+];
+
+const filteredFindings = findings.filter((finding) => {
+  const severityMatches =
+    severityFilter === "all" ||
+    severityClass(finding.severity) === severityFilter;
+
+  const viewportMatches =
+    viewportFilter === "all" ||
+    String(finding.viewport ?? "").toLowerCase() === viewportFilter;
+
+  const issueType =
+    finding.rule_id ?? finding.type ?? "UI issue";
+
+  const issueTypeMatches =
+    issueTypeFilter === "all" ||
+    issueType === issueTypeFilter;
+
+  return (
+    severityMatches &&
+    viewportMatches &&
+    issueTypeMatches
+  );
+});
 
   // Apply all finding filters
   const filteredFindings = findings.filter((finding) => {
@@ -335,6 +350,50 @@ function App() {
         String(finding.viewport ?? "").toLowerCase() === viewport
     ).length,
   }));
+
+function exportFindingsCSV() {
+  if (filteredFindings.length === 0) {
+    setError("No findings available to export.");
+    return;
+  }
+
+  const headers = [
+    "Issue Type",
+    "Severity",
+    "Viewport",
+    "Description",
+  ];
+
+  const rows = filteredFindings.map((finding) => [
+    finding.rule_id ?? finding.type ?? "UI issue",
+    finding.severity ?? "warning",
+    finding.viewport ?? "unknown",
+    finding.description ?? finding.message ?? "",
+  ]);
+
+  const escapeCSV = (value) =>
+    `"${String(value).replace(/"/g, '""')}"`;
+
+  const csv = [
+    headers,
+    ...rows,
+  ]
+    .map((row) => row.map(escapeCSV).join(","))
+    .join("\n");
+
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+
+  link.href = objectUrl;
+  link.download = "omnisight-findings.csv";
+  link.click();
+
+  URL.revokeObjectURL(objectUrl);
+}
 
   return (
     <div className="app-shell">
@@ -647,6 +706,13 @@ function App() {
               <section className="content-panel findings-panel">
                 
                 <div className="panel-heading">
+<button
+  type="button"
+  className="secondary-button"
+  onClick={exportFindingsCSV}
+>
+  ↓ Export CSV
+</button>
                   <div>
                     <h3>Detected findings</h3>
                     <p>Issues identified by the inspection rules.</p>
@@ -673,75 +739,63 @@ function App() {
 
                 {/* Finding Filters */}
                 <div className="finding-filters">
-                  <label>
-                    Severity
+  <label>
+    Severity
+    <select
+      value={severityFilter}
+      onChange={(e) => setSeverityFilter(e.target.value)}
+    >
+      <option value="all">All severities</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+      <option value="warning">Warning</option>
+    </select>
+  </label>
 
-                    <select
-                      value={severityFilter}
-                      onChange={(event) =>
-                        setSeverityFilter(event.target.value)
-                      }
-                    >
-                      <option value="all">All severities</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                      <option value="warning">Warning</option>
-                    </select>
-                  </label>
+  <label>
+    Viewport
+    <select
+      value={viewportFilter}
+      onChange={(e) => setViewportFilter(e.target.value)}
+    >
+      <option value="all">All viewports</option>
+      <option value="desktop">Desktop</option>
+      <option value="tablet">Tablet</option>
+      <option value="mobile">Mobile</option>
+    </select>
+  </label>
 
-                  <label>
-                    Viewport
+  <label>
+    Issue type
+    <select
+      value={issueTypeFilter}
+      onChange={(e) => setIssueTypeFilter(e.target.value)}
+    >
+      <option value="all">All issue types</option>
+      {issueTypes.map((type) => (
+        <option key={type} value={type}>
+          {type}
+        </option>
+      ))}
+    </select>
+  </label>
 
-                    <select
-                      value={viewportFilter}
-                      onChange={(event) =>
-                        setViewportFilter(event.target.value)
-                      }
-                    >
-                      <option value="all">All viewports</option>
+  <button
+    type="button"
+    className="reset-filters-button"
+    onClick={resetFilters}
+  >
+    Reset filters
+  </button>
+</div>
 
-                      {VIEWPORTS.map((viewport) => (
-                        <option key={viewport} value={viewport}>
-                          {viewport.charAt(0).toUpperCase() +
-                            viewport.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    Issue type
-
-                    <select
-                      value={issueTypeFilter}
-                      onChange={(event) =>
-                        setIssueTypeFilter(event.target.value)
-                      }
-                    >
-                      <option value="all">All issue types</option>
-
-                      {issueTypes.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <button
-                    type="button"
-                    className="reset-filters-button"
-                    onClick={resetFilters}
-                  >
-                    Reset filters
-                  </button>
-                </div>
-
-                <p className="filter-result-count" aria-live="polite">
-                  Showing {filteredFindings.length} of {findings.length}{" "}
-                  findings
-                </p>
+<p className="filter-result-count" aria-live="polite">
+  Showing {filteredFindings.length} of {findings.length} findings
+</p>
+                      
+                      
+                  
 
                 {filteredFindings.length === 0 ? (
                   <p className="filter-empty">
