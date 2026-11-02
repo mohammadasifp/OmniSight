@@ -1,13 +1,11 @@
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const API = "http://127.0.0.1:8000";
 const VIEWPORTS = ["desktop", "tablet", "mobile"];
 
-function parseJSON(value, fallback) {
+function safeJSON(value, fallback) {
   if (typeof value !== "string") return value ?? fallback;
-
   try {
     return JSON.parse(value);
   } catch {
@@ -16,128 +14,108 @@ function parseJSON(value, fallback) {
 }
 
 function normalizeInspection(item = {}) {
+  const findings = safeJSON(item.findings ?? item.findings_json, []);
+  const screenshots = safeJSON(
+    item.screenshots ?? item.screenshots_json,
+    {}
+  );
+
   return {
     ...item,
     id: item.id ?? item.inspection_id ?? "",
-    findings: parseJSON(item.findings ?? item.findings_json, []),
-    screenshots: parseJSON(
-      item.screenshots ?? item.screenshots_json,
-      {}
-    ),
-    title: item.title ?? "",
     url: item.url ?? "",
+    title: item.title ?? "",
     status: item.status ?? "completed",
     created_at: item.created_at ?? "",
+    findings: Array.isArray(findings) ? findings : [],
+    screenshots:
+      screenshots && typeof screenshots === "object" && !Array.isArray(screenshots)
+        ? screenshots
+        : {},
   };
+}
+
+function severityClass(value = "warning") {
+  const severity = String(value).toLowerCase();
+  if (severity === "critical" || severity === "high") return "high";
+  if (severity === "medium") return "medium";
+  if (severity === "low") return "low";
+  return "warning";
 }
 
 function screenshotUrl(path) {
   if (!path) return "";
+  const value = String(path);
 
-  if (/^https?:\/\//i.test(path)) {
+  if (/^https?:\/\//i.test(value)) {
     try {
-      const parsed = new URL(path);
-      return `${API}${parsed.pathname}`;
+      const parsed = new URL(value);
+      if (parsed.pathname.startsWith("/screenshots/")) {
+        return `${API}${parsed.pathname}${parsed.search}`;
+      }
+      return value;
     } catch {
-      return path;
+      return value;
     }
   }
 
-  const filename = path.split(/[\\/]/).pop();
+  const filename = value.split(/[\\/]/).pop();
   return `${API}/screenshots/${encodeURIComponent(filename)}`;
 }
 
-function severityClass(severity = "warning") {
-  const value = String(severity).toLowerCase();
-
-  if (value === "high" || value === "critical") return "high";
-  if (value === "medium") return "medium";
-  if (value === "low") return "low";
-
-  return "warning";
+function findingType(finding) {
+  return finding.rule_id ?? finding.type ?? "UI issue";
 }
 
+function exportCSV(findings, inspection) {
+  if (!findings.length) return;
 
-function exportFindingsCSV(findings, inspection) {
-  const headers = [
-    "Website",
-    "Issue Type",
-    "Description",
-    "Severity",
-    "Viewport",
-    "Evidence",
-  ];
-
-  const escapeCSV = (value) => {
-    const text = String(value ?? "");
-    return `"${text.replaceAll('"', '""')}"`;
-  };
-
-  const rows = findings.map((finding) => [
-    inspection?.url ?? "",
-    finding.rule_id ?? finding.type ?? "UI issue",
-    finding.description ?? finding.message ?? "",
-    finding.severity ?? "warning",
-    finding.viewport ?? "",
-    finding.evidence ?? "",
+  const headers = ["Website", "Issue Type", "Description", "Severity", "Viewport", "Evidence"];
+  const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const rows = findings.map((item) => [
+    inspection?.url,
+    findingType(item),
+    item.description ?? item.message,
+    item.severity,
+    item.viewport,
+    item.evidence,
   ]);
 
-  const csvContent = [
-    headers,
-    ...rows,
-  ]
-    .map((row) => row.map(escapeCSV).join(","))
-    .join("\r\n");
-
-  const blob = new Blob(
-    ["\uFEFF" + csvContent],
-    { type: "text/csv;charset=utf-8;" }
-  );
-
-  const downloadUrl = URL.createObjectURL(blob);
+  const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
-
-  link.href = downloadUrl;
-  link.download = "omnisight-inspection-report.csv";
-
+  link.href = objectUrl;
+  link.download = "omnisight-quality-report.csv";
   document.body.appendChild(link);
   link.click();
   link.remove();
-
-  URL.revokeObjectURL(downloadUrl);
+  URL.revokeObjectURL(objectUrl);
 }
-
 
 function App() {
   const [url, setUrl] = useState("https://example.com");
   const [inspection, setInspection] = useState(null);
   const [history, setHistory] = useState([]);
   const [activeViewport, setActiveViewport] = useState("desktop");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [historyLoading, setHistoryLoading] = useState(true);
-
-  // Finding filters
+  const [severityFilter, setSeverityFilter] = useState("all");
   const [viewportFilter, setViewportFilter] = useState("all");
-const [issueFilter, setIssueFilter] = useState("all");
+  const [issueTypeFilter, setIssueTypeFilter] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [activeSection, setActiveSection] = useState("overview");
+  const [plannerOpen, setPlannerOpen] = useState(true);
+  const [copiedPlan, setCopiedPlan] = useState(false);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
-
     try {
       const response = await fetch(`${API}/api/inspections`);
-
-      if (!response.ok) {
-        throw new Error("Could not load inspection history.");
-      }
-
+      if (!response.ok) throw new Error("Could not load inspection history.");
       const data = await response.json();
-
-      const items = Array.isArray(data)
-        ? data
-        : data.inspections ?? data.items ?? [];
-
-      setHistory(items.map(normalizeInspection));
+      const records = Array.isArray(data) ? data : data.inspections ?? data.items ?? [];
+      setHistory(Array.isArray(records) ? records.map(normalizeInspection) : []);
     } catch (err) {
       setError((current) => current || err.message);
     } finally {
@@ -149,6 +127,104 @@ const [issueFilter, setIssueFilter] = useState("all");
     loadHistory();
   }, [loadHistory]);
 
+  const findings = useMemo(
+    () => (Array.isArray(inspection?.findings) ? inspection.findings : []),
+    [inspection]
+  );
+
+  const issueTypes = useMemo(
+    () => [...new Set(findings.map(findingType))],
+    [findings]
+  );
+
+  const filteredFindings = useMemo(
+    () =>
+      findings.filter((finding) => {
+        const severityMatch =
+          severityFilter === "all" ||
+          severityClass(finding.severity) === severityFilter;
+        const viewportMatch =
+          viewportFilter === "all" ||
+          String(finding.viewport ?? "").toLowerCase() === viewportFilter;
+        const typeMatch =
+          issueTypeFilter === "all" || findingType(finding) === issueTypeFilter;
+        return severityMatch && viewportMatch && typeMatch;
+      }),
+    [findings, severityFilter, viewportFilter, issueTypeFilter]
+  );
+
+  const counts = useMemo(
+    () => ({
+      high: findings.filter((f) => severityClass(f.severity) === "high").length,
+      medium: findings.filter((f) => severityClass(f.severity) === "medium").length,
+      warning: findings.filter((f) => severityClass(f.severity) === "warning").length,
+      low: findings.filter((f) => severityClass(f.severity) === "low").length,
+    }),
+    [findings]
+  );
+
+  const viewportStats = useMemo(
+    () =>
+      VIEWPORTS.map((viewport) => ({
+        name: viewport,
+        count: findings.filter(
+          (f) => String(f.viewport ?? "").toLowerCase() === viewport
+        ).length,
+      })),
+    [findings]
+  );
+
+  const passedViewports = viewportStats.filter((item) => item.count === 0).length;
+  const passRate = Math.round((passedViewports / VIEWPORTS.length) * 100);
+  const uniqueIssueCount = new Set(findings.map(findingType)).size;
+  const screenshots = inspection?.screenshots ?? {};
+  const activeScreenshot = screenshots[activeViewport] ?? "";
+
+  // Smart Fix Planner: transparent, rule-based prioritization using current findings.
+  const fixPlan = useMemo(() => {
+    const grouped = new Map();
+
+    findings.forEach((finding) => {
+      const key = findingType(finding);
+      const current = grouped.get(key) ?? {
+        type: key,
+        severity: "low",
+        viewports: new Set(),
+        count: 0,
+        examples: [],
+      };
+
+      const rank = { low: 1, warning: 2, medium: 3, high: 4 };
+      const nextSeverity = severityClass(finding.severity);
+      if ((rank[nextSeverity] ?? 2) > (rank[current.severity] ?? 1)) {
+        current.severity = nextSeverity;
+      }
+      if (finding.viewport) current.viewports.add(String(finding.viewport).toLowerCase());
+      current.count += 1;
+      if (current.examples.length < 2) {
+        current.examples.push(finding.description ?? finding.message ?? "Review this issue.");
+      }
+      grouped.set(key, current);
+    });
+
+    return [...grouped.values()]
+      .map((item) => {
+        const viewportCount = item.viewports.size;
+        const severityPoints = { high: 40, medium: 25, warning: 12, low: 5 }[item.severity] ?? 10;
+        const reachPoints = viewportCount * 15;
+        const repeatPoints = Math.min(item.count * 3, 15);
+        return {
+          ...item,
+          viewportList: [...item.viewports],
+          score: Math.min(100, severityPoints + reachPoints + repeatPoints),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [findings]);
+
+  const priorityLabel = (score) =>
+    score >= 70 ? "Fix first" : score >= 40 ? "Plan next" : "Monitor";
+
   function resetFilters() {
     setSeverityFilter("all");
     setViewportFilter("all");
@@ -157,48 +233,39 @@ const [issueFilter, setIssueFilter] = useState("all");
 
   async function runInspection(event) {
     event.preventDefault();
+    const target = url.trim();
 
-    const trimmedUrl = url.trim();
-
-    if (!/^https?:\/\/.+/i.test(trimmedUrl)) {
+    if (!/^https?:\/\/.+/i.test(target)) {
       setError("Enter a valid URL beginning with http:// or https://.");
       return;
     }
 
     setLoading(true);
     setError("");
-
     try {
       const response = await fetch(`${API}/api/inspections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: trimmedUrl,
-          viewports: VIEWPORTS,
-        }),
+        body: JSON.stringify({ url: target, viewports: VIEWPORTS }),
       });
-
-      const data = await response.json();
-
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(
           data.detail
-            ? JSON.stringify(data.detail)
+            ? typeof data.detail === "string"
+              ? data.detail
+              : JSON.stringify(data.detail)
             : "The inspection request failed."
         );
       }
 
-      const result = normalizeInspection(data);
-
-      setInspection(result);
+      setInspection(normalizeInspection(data));
       setActiveViewport("desktop");
       resetFilters();
-
       await loadHistory();
+      document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
-      setError(
-        `${err.message}. Check that the backend is running at ${API}.`
-      );
+      setError(`${err.message} Check that the backend is running at ${API}.`);
     } finally {
       setLoading(false);
     }
@@ -206,657 +273,306 @@ const [issueFilter, setIssueFilter] = useState("all");
 
   async function openHistory(item) {
     setError("");
-
     if (item.id) {
       try {
         const response = await fetch(
           `${API}/api/inspections/${encodeURIComponent(item.id)}`
         );
-
         if (response.ok) {
-          const data = await response.json();
-
-          setInspection(normalizeInspection(data));
+          setInspection(normalizeInspection(await response.json()));
           setActiveViewport("desktop");
           resetFilters();
+          document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
           return;
         }
       } catch {
-        // Fall back to the history record already loaded.
+        // Use the record already available in history.
       }
     }
-
     setInspection(normalizeInspection(item));
     setActiveViewport("desktop");
     resetFilters();
+    document.getElementById("results")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  // Inspection findings
-  const findings = Array.isArray(inspection?.findings)
-  ? inspection.findings
-  : [];
+  async function copyFixPlan() {
+    const text = [
+      `OmniSight Fix Plan — ${inspection?.url ?? "Website"}`,
+      "",
+      ...fixPlan.map(
+        (item, index) =>
+          `${index + 1}. ${item.type} | ${item.severity.toUpperCase()} | ${priorityLabel(item.score)} | ${item.viewportList.join(", ") || "Viewport not specified"} | ${item.count} occurrence(s)`
+      ),
+    ].join("\n");
 
-const issueTypes = [
-  ...new Set(
-    findings.map(
-      (finding) =>
-        finding.rule_id ?? finding.type ?? "UI issue"
-    )
-  ),
-];
-
-const filteredFindings = findings.filter((finding) => {
-  const severityMatches =
-    severityFilter === "all" ||
-    severityClass(finding.severity) === severityFilter;
-
-  const viewportMatches =
-    viewportFilter === "all" ||
-    String(finding.viewport ?? "").toLowerCase() === viewportFilter;
-
-  const issueType =
-    finding.rule_id ?? finding.type ?? "UI issue";
-
-  const issueTypeMatches =
-    issueTypeFilter === "all" ||
-    issueType === issueTypeFilter;
-
-  return (
-    severityMatches &&
-    viewportMatches &&
-    issueTypeMatches
-  );
-});
-
-  // Apply all finding filters
-  const filteredFindings = findings.filter((finding) => {
-    const severityMatches =
-      severityFilter === "all" ||
-      severityClass(finding.severity) === severityFilter;
-
-    const viewportMatches =
-      viewportFilter === "all" ||
-      String(finding.viewport ?? "").toLowerCase() === viewportFilter;
-
-    const issueType =
-      finding.rule_id ??
-      finding.type ??
-      finding.description ??
-      finding.message ??
-      "UI issue";
-
-    const issueTypeMatches =
-      issueTypeFilter === "all" || issueType === issueTypeFilter;
-
-    return severityMatches && viewportMatches && issueTypeMatches;
-  });
-
-  // Screenshots
-  const screenshots = inspection?.screenshots ?? {};
-  const activeScreenshot = screenshots[activeViewport] ?? "";
-
-  // Severity counts
-  const highCount = findings.filter(
-    (item) => severityClass(item.severity) === "high"
-  ).length;
-
-  const mediumCount = findings.filter(
-    (item) => severityClass(item.severity) === "medium"
-  ).length;
-
-  const warningCount = findings.filter(
-    (item) => severityClass(item.severity) === "warning"
-  ).length;
-
-  const lowCount = findings.filter(
-    (item) => severityClass(item.severity) === "low"
-  ).length;
-
-  // Severity breakdown data
-  const severitySummary = [
-    { label: "High", count: highCount, className: "high" },
-    { label: "Medium", count: mediumCount, className: "medium" },
-    { label: "Warning", count: warningCount, className: "warning" },
-    { label: "Low", count: lowCount, className: "low" },
-  ];
-
-  // Quality summary
-  const uniqueIssueCount = new Set(
-    findings.map(
-      (item) =>
-        item.rule_id ??
-        item.type ??
-        item.description ??
-        item.message
-    )
-  ).size;
-
-  const passedViewports = VIEWPORTS.filter(
-    (viewport) =>
-      !findings.some(
-        (finding) =>
-          String(finding.viewport ?? "").toLowerCase() === viewport
-      )
-  ).length;
-
-  const passRate = Math.round(
-    (passedViewports / VIEWPORTS.length) * 100
-  );
-
-  const viewportStats = VIEWPORTS.map((viewport) => ({
-    name: viewport,
-    count: findings.filter(
-      (finding) =>
-        String(finding.viewport ?? "").toLowerCase() === viewport
-    ).length,
-  }));
-
-function exportFindingsCSV() {
-  if (filteredFindings.length === 0) {
-    setError("No findings available to export.");
-    return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedPlan(true);
+      window.setTimeout(() => setCopiedPlan(false), 1800);
+    } catch {
+      setError("Clipboard access was blocked by the browser. You can still export the findings as CSV.");
+    }
   }
 
-  const headers = [
-    "Issue Type",
-    "Severity",
-    "Viewport",
-    "Description",
-  ];
-
-  const rows = filteredFindings.map((finding) => [
-    finding.rule_id ?? finding.type ?? "UI issue",
-    finding.severity ?? "warning",
-    finding.viewport ?? "unknown",
-    finding.description ?? finding.message ?? "",
-  ]);
-
-  const escapeCSV = (value) =>
-    `"${String(value).replace(/"/g, '""')}"`;
-
-  const csv = [
-    headers,
-    ...rows,
-  ]
-    .map((row) => row.map(escapeCSV).join(","))
-    .join("\n");
-
-  const blob = new Blob([csv], {
-    type: "text/csv;charset=utf-8;",
-  });
-
-  const link = document.createElement("a");
-  const objectUrl = URL.createObjectURL(blob);
-
-  link.href = objectUrl;
-  link.download = "omnisight-findings.csv";
-  link.click();
-
-  URL.revokeObjectURL(objectUrl);
-}
+  function navigate(section) {
+    setActiveSection(section);
+    document.getElementById(section)?.scrollIntoView({ behavior: "smooth" });
+  }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="#dashboard">
+        <a className="brand" href="#overview" onClick={() => setActiveSection("overview")}>
           <span className="brand-mark">O</span>
-
-          <span>
+          <span className="brand-copy">
             <strong>OmniSight</strong>
-            <small>UI intelligence</small>
+            <small>Quality intelligence</small>
           </span>
         </a>
 
-        <p className="nav-label">WORKSPACE</p>
-
-        <a className="nav-item active" href="#dashboard">
-          <span>▦</span> Overview
-        </a>
-
-        <button
-          className="nav-item nav-button"
-          onClick={() =>
-            document.getElementById("history")?.scrollIntoView({
-              behavior: "smooth",
-            })
-          }
-        >
-          <span>◷</span> Inspection history
+        <div className="sidebar-label">WORKSPACE</div>
+        <button className={`nav-item ${activeSection === "overview" ? "active" : ""}`} onClick={() => navigate("overview")}>
+          <span className="nav-icon">◫</span> Overview
+        </button>
+        <button className={`nav-item ${activeSection === "results" ? "active" : ""}`} onClick={() => navigate("results")}>
+          <span className="nav-icon">⌁</span> Latest results
+        </button>
+        <button className={`nav-item ${activeSection === "history" ? "active" : ""}`} onClick={() => navigate("history")}>
+          <span className="nav-icon">◷</span> History
+          <span className="nav-count">{history.length}</span>
         </button>
 
         <div className="sidebar-bottom">
-          <span className="status-dot" />
-          <span>OmniSight API</span>
-          <small>localhost</small>
+          <span className="live-dot" />
+          <span>API workspace</span>
+          <small>Local environment</small>
         </div>
       </aside>
 
-      <main className="main-content" id="dashboard">
-        <header className="topbar">
+      <main className="main-content">
+        <header className="topbar" id="overview">
           <div>
-            <p className="eyebrow">RESPONSIVE QUALITY ASSURANCE</p>
+            <div className="eyebrow"><span className="eyebrow-line" /> RESPONSIVE QUALITY ASSURANCE</div>
             <h1>UI Inspection Dashboard</h1>
-
-            <p className="muted">
-              Find visual and responsive issues across devices.
-            </p>
+            <p className="muted">One scan. Three screens. A clearer picture of your website quality.</p>
           </div>
-
-          <span className="version-pill">MVP · 0.1</span>
+          <div className="topbar-right">
+            <span className="system-pill"><span className="live-dot" /> SYSTEM READY</span>
+            <span className="version-pill">MVP <b>0.2</b></span>
+          </div>
         </header>
 
-        <section className="welcome-panel">
-          <div className="welcome-copy">
-            <span className="section-kicker">WEBSITE ANALYSIS</span>
-
-            <h2>Inspect your website</h2>
-
-            <p>
-              Run a multi-viewport scan and review issues detected by
-              OmniSight.
-            </p>
+        <section className="hero-panel">
+          <div className="hero-orb orb-one" />
+          <div className="hero-orb orb-two" />
+          <div className="hero-content">
+            <div className="section-kicker"><span /> WEBSITE ANALYSIS</div>
+            <h2>Make every viewport count.</h2>
+            <p>Scan a website across desktop, tablet and mobile. Find layout issues before your users do.</p>
+            <form className="inspect-form" onSubmit={runInspection}>
+              <label htmlFor="website-url">WEBSITE URL</label>
+              <div className="url-row">
+                <span className="url-prefix">↗</span>
+                <input
+                  id="website-url"
+                  type="url"
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  placeholder="https://yourwebsite.com"
+                  required
+                />
+                <button className="primary-button" type="submit" disabled={loading}>
+                  {loading ? <><span className="spinner" /> Scanning…</> : <>Run inspection <span>↗</span></>}
+                </button>
+              </div>
+              <div className="scan-meta">
+                <span>✓ Desktop <b>1440px</b></span>
+                <span>✓ Tablet <b>768px</b></span>
+                <span>✓ Mobile <b>390px</b></span>
+                <span className="scan-time">● Multi-viewport scan</span>
+              </div>
+            </form>
           </div>
-
-          <form className="inspect-form" onSubmit={runInspection}>
-            <label htmlFor="website-url">Website URL</label>
-
-            <div className="url-row">
-              <input
-                id="website-url"
-                type="url"
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                placeholder="https://example.com"
-                required
-              />
-
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={loading}
-              >
-                {loading ? "Inspecting…" : "▶ Run inspection"}
-              </button>
-            </div>
-
-            <div className="viewport-hint">
-              <span>✓ Desktop · 1440px</span>
-              <span>✓ Tablet · 768px</span>
-              <span>✓ Mobile · 390px</span>
-            </div>
-          </form>
+          <div className="hero-visual" aria-hidden="true">
+            <div className="visual-glow" />
+            <div className="device device-desktop"><div className="device-bar"><i /><i /><i /></div><div className="device-screen"><div className="mock-nav" /><div className="mock-heading" /><div className="mock-line" /><div className="mock-line short" /><div className="mock-cards"><i /><i /><i /></div></div></div>
+            <div className="device device-mobile"><div className="mobile-notch" /><div className="mobile-screen"><div className="mock-nav" /><div className="mock-heading" /><div className="mock-line" /><div className="mock-card" /><div className="mock-line short" /></div></div>
+            <div className="visual-tag"><span>✦</span> Responsive scan</div>
+          </div>
         </section>
 
         {error && (
           <div className="error-banner" role="alert">
-            <strong>Something went wrong</strong>
+            <span className="error-symbol">!</span>
             <span>{error}</span>
-
-            <button
-              onClick={() => setError("")}
-              aria-label="Dismiss error"
-            >
-              ×
-            </button>
+            <button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button>
           </div>
         )}
 
-        <section className="section-block">
-          <div className="section-heading">
+        <section className="results-section" id="results">
+          <div className="section-title-row">
             <div>
-              <p className="eyebrow">LATEST RESULTS</p>
+              <div className="eyebrow">LATEST RESULTS</div>
               <h2>Inspection overview</h2>
+              <p className="muted">{inspection ? inspection.url : "Your latest scan will appear here."}</p>
             </div>
-
-            {inspection && (
-              <span className="result-url">{inspection.url}</span>
-            )}
+            {inspection && <span className="complete-pill"><span /> SCAN COMPLETE</span>}
           </div>
 
           {!inspection ? (
             <div className="empty-state">
-              <div className="empty-icon">⌕</div>
-
-              <h3>Your inspection results will appear here</h3>
-
-              <p>
-                Enter a website above and select Run inspection to get
-                started.
-              </p>
+              <div className="empty-art">⌕</div>
+              <h3>Your workspace is ready</h3>
+              <p>Enter a website above to generate your first responsive quality report.</p>
             </div>
           ) : (
             <>
-              {/* Statistics */}
-              <div className="stats-grid">
-                <section className="quality-panel">
-                  <div className="quality-header">
-                    <div>
-                      <p className="eyebrow">QUALITY SUMMARY</p>
-                      <h3>Responsive health</h3>
+              <div className="overview-grid">
+                <article className="health-card">
+                  <div className="card-topline"><span>RESPONSIVE HEALTH</span><span className="tiny-chip">RULE-BASED</span></div>
+                  <div className="health-main">
+                    <div className="health-ring" style={{ "--progress": `${passRate}%` }}>
+                      <div><strong>{passRate}<small>%</small></strong><span>pass rate</span></div>
                     </div>
-
-                    <span className="quality-rate">{passRate}%</span>
-                  </div>
-
-                  <p className="quality-description">
-                    {passedViewports} of {VIEWPORTS.length} viewports had no
-                    detected issues. This measures rule-based checks, not
-                    overall website quality.
-                  </p>
-
-                  <div
-                    className="quality-progress"
-                    role="progressbar"
-                    aria-label="Viewport pass rate"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={passRate}
-                  >
-                    <div
-                      className="quality-progress-fill"
-                      style={{ width: `${passRate}%` }}
-                    />
-                  </div>
-
-                  <div className="quality-details">
-                    <div className="quality-detail">
-                      <span>Unique issue types</span>
-                      <strong>{uniqueIssueCount}</strong>
+                    <div className="health-copy">
+                      <h3>{passedViewports} of 3 viewports clear</h3>
+                      <p>{passedViewports === 3 ? "No findings were reported across the tested viewports." : "Viewports without reported findings. This is a rule-based signal, not a complete accessibility or UX score."}</p>
+                      <div className="viewport-mini-list">
+                        {viewportStats.map((item) => (
+                          <span key={item.name} className={item.count === 0 ? "is-clear" : "has-issues"}>
+                            <i /> {item.name} <b>{item.count}</b>
+                          </span>
+                        ))}
+                      </div>
                     </div>
+                  </div>
+                </article>
 
-                    {viewportStats.map((viewport) => (
-                      <div className="quality-detail" key={viewport.name}>
-                        <span>
-                          {viewport.name.charAt(0).toUpperCase() +
-                            viewport.name.slice(1)}{" "}
-                          findings
-                        </span>
+                <article className="metric-card metric-total">
+                  <div className="metric-icon">⌁</div><span>TOTAL FINDINGS</span><strong>{findings.length}</strong><small>Across all viewports</small>
+                  <div className="metric-spark"><i /><i /><i /><i /><i /><i /><i /></div>
+                </article>
+                <article className="metric-card metric-high">
+                  <div className="metric-icon">↗</div><span>HIGH PRIORITY</span><strong>{counts.high}</strong><small>Fix these first</small>
+                </article>
+                <article className="metric-card metric-medium">
+                  <div className="metric-icon">◈</div><span>MEDIUM PRIORITY</span><strong>{counts.medium}</strong><small>Review and improve</small>
+                </article>
+                <article className="metric-card metric-warning">
+                  <div className="metric-icon">△</div><span>WARNINGS</span><strong>{counts.warning}</strong><small>Potential improvements</small>
+                </article>
+              </div>
 
-                        <strong>{viewport.count}</strong>
+              <div className="analysis-grid">
+                <section className="content-panel severity-panel">
+                  <div className="panel-heading">
+                    <div><span className="panel-overline">ISSUE DISTRIBUTION</span><h3>Severity breakdown</h3><p>Understand the risk profile of this scan.</p></div>
+                    <span className="panel-icon">◉</span>
+                  </div>
+                  <div className="severity-bars">
+                    {[
+                      ["High", counts.high, "high"],
+                      ["Medium", counts.medium, "medium"],
+                      ["Warning", counts.warning, "warning"],
+                      ["Low", counts.low, "low"],
+                    ].map(([label, count, kind]) => (
+                      <div className="severity-line" key={kind}>
+                        <div className="severity-line-label"><span className={`severity-dot ${kind}`} />{label}<b>{count}</b></div>
+                        <div className="bar-track"><i className={kind} style={{ width: `${findings.length ? (count / findings.length) * 100 : 0}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="severity-footer"><span>{uniqueIssueCount} unique issue types</span><span>{findings.length} total records</span></div>
+                </section>
+
+                <section className="content-panel viewport-panel">
+                  <div className="panel-heading">
+                    <div><span className="panel-overline">DEVICE COVERAGE</span><h3>Viewport health</h3><p>Find where issues are concentrated.</p></div>
+                    <span className="panel-icon">▣</span>
+                  </div>
+                  <div className="viewport-health-list">
+                    {viewportStats.map((item, index) => (
+                      <div className="viewport-health-row" key={item.name}>
+                        <span className={`viewport-device-icon device-${item.name}`}>{index === 0 ? "▰" : index === 1 ? "▭" : "▯"}</span>
+                        <div className="viewport-health-info"><strong>{item.name}</strong><small>{item.count ? `${item.count} issue(s) found` : "No findings reported"}</small></div>
+                        <span className={`viewport-status ${item.count ? "attention" : "clear"}`}>{item.count ? "Review" : "Clear"}</span>
                       </div>
                     ))}
                   </div>
                 </section>
-
-                <article className="stat-card">
-                  <span className="stat-label">Total findings</span>
-                  <strong>{findings.length}</strong>
-                  <small>Across inspected viewports</small>
-                </article>
-
-                <article className="stat-card stat-high">
-                  <span className="stat-label">High severity</span>
-                  <strong>{highCount}</strong>
-                  <small>Issues to prioritize</small>
-                </article>
-
-                <article className="stat-card stat-medium">
-                  <span className="stat-label">Medium severity</span>
-                  <strong>{mediumCount}</strong>
-                  <small>Issues to review</small>
-                </article>
-
-                <article className="stat-card stat-warning">
-                  <span className="stat-label">Warnings</span>
-                  <strong>{warningCount}</strong>
-                  <small>Potential improvements</small>
-                </article>
               </div>
 
-              {/* Severity Breakdown */}
-              <section className="content-panel severity-summary">
-                <div className="panel-heading">
-                  <div>
-                    <h3>Severity breakdown</h3>
-                    <p>Distribution of detected UI issues.</p>
-                  </div>
-
-                  <span className="count-pill">
-                    {findings.length} findings
-                  </span>
-                </div>
-
-                <div className="severity-summary-list">
-                  {severitySummary.map((item) => {
-                    const percentage =
-                      findings.length > 0
-                        ? Math.round(
-                            (item.count / findings.length) * 100
-                          )
-                        : 0;
-
-                    return (
-                      <div
-                        className="severity-summary-item"
-                        key={item.label}
-                      >
-                        <div className="severity-summary-label">
-                          <span>{item.label}</span>
-
-                          <strong>
-                            {item.count} ({percentage}%)
-                          </strong>
-                        </div>
-
-                        <div className="severity-summary-track">
-                          <div
-                            className={`severity-summary-fill ${item.className}`}
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
+              <section className="content-panel planner-panel">
+                <button className="planner-heading" type="button" onClick={() => setPlannerOpen(!plannerOpen)} aria-expanded={plannerOpen}>
+                  <span className="planner-symbol">✦</span>
+                  <span className="planner-heading-copy"><span className="panel-overline">OMNISIGHT INTELLIGENCE</span><strong>Smart Fix Planner</strong><small>Prioritize fixes by severity, viewport reach and repeated occurrences.</small></span>
+                  <span className="planner-count">{fixPlan.length} priorities</span>
+                  <span className="collapse-icon">{plannerOpen ? "−" : "+"}</span>
+                </button>
+                {plannerOpen && (
+                  <div className="planner-body">
+                    <div className="planner-note"><span>ⓘ</span> Rule-based prioritization: higher severity, more affected viewports and repeated findings increase priority. It does not use AI or modify your website.</div>
+                    {fixPlan.length === 0 ? (
+                      <div className="planner-empty">No detected issues to prioritize. Run an inspection to build your fix plan.</div>
+                    ) : (
+                      <div className="fix-plan-list">
+                        {fixPlan.slice(0, 5).map((item, index) => (
+                          <div className="fix-plan-item" key={item.type}>
+                            <span className="plan-number">{String(index + 1).padStart(2, "0")}</span>
+                            <div className="plan-main"><strong>{item.type.replaceAll("_", " ")}</strong><small>{item.count} occurrence(s) · {item.viewportList.join(", ") || "Viewport not specified"}</small></div>
+                            <div className="plan-score"><div><i style={{ width: `${item.score}%` }} /></div><small>Priority score <b>{item.score}</b></small></div>
+                            <span className={`priority-pill ${item.score >= 70 ? "first" : item.score >= 40 ? "next" : "monitor"}`}>{priorityLabel(item.score)}</span>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                    <div className="planner-actions"><span>Generated from this inspection's findings</span><button type="button" className="subtle-button" onClick={copyFixPlan} disabled={!fixPlan.length}>{copiedPlan ? "✓ Copied plan" : "Copy fix plan ↗"}</button></div>
+                  </div>
+                )}
               </section>
 
-              {/* Responsive Screenshots */}
               <section className="content-panel screenshot-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h3>Responsive screenshots</h3>
-                    <p>
-                      Review the captured layout at each screen size.
-                    </p>
-                  </div>
-
-                  <div className="viewport-tabs" role="tablist">
+                <div className="panel-heading screenshot-heading">
+                  <div><span className="panel-overline">VISUAL EVIDENCE</span><h3>Responsive screenshots</h3><p>Inspect the captured page at each screen size.</p></div>
+                  <div className="viewport-tabs" role="tablist" aria-label="Screenshot viewport">
                     {VIEWPORTS.map((viewport) => (
-                      <button
-                        key={viewport}
-                        role="tab"
-                        aria-selected={activeViewport === viewport}
-                        className={
-                          activeViewport === viewport ? "tab active" : "tab"
-                        }
-                        onClick={() => setActiveViewport(viewport)}
-                      >
-                        {viewport.charAt(0).toUpperCase() +
-                          viewport.slice(1)}
-                      </button>
+                      <button key={viewport} type="button" role="tab" aria-selected={activeViewport === viewport} className={activeViewport === viewport ? "tab active" : "tab"} onClick={() => setActiveViewport(viewport)}>{viewport}</button>
                     ))}
                   </div>
                 </div>
-
                 <div className={`screenshot-stage ${activeViewport}`}>
                   {activeScreenshot ? (
-                    <a
-                      href={screenshotUrl(activeScreenshot)}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Open screenshot in a new tab"
-                    >
-                      <img
-                        src={screenshotUrl(activeScreenshot)}
-                        alt={`${activeViewport} website screenshot`}
-                      />
+                    <a href={screenshotUrl(activeScreenshot)} target="_blank" rel="noreferrer" title="Open screenshot in a new tab">
+                      <img src={screenshotUrl(activeScreenshot)} alt={`${activeViewport} website screenshot`} />
                     </a>
                   ) : (
-                    <div className="screenshot-empty">
-                      <span>▧</span>
-                      <p>
-                        No screenshot available for {activeViewport}.
-                      </p>
-                    </div>
+                    <div className="screenshot-empty"><span>▧</span><strong>No screenshot available</strong><p>There is no captured image for {activeViewport}.</p></div>
                   )}
                 </div>
               </section>
 
-              {/* Detected Findings */}
               <section className="content-panel findings-panel">
-                
-                <div className="panel-heading">
-<button
-  type="button"
-  className="secondary-button"
-  onClick={exportFindingsCSV}
->
-  ↓ Export CSV
-</button>
-                  <div>
-                    <h3>Detected findings</h3>
-                    <p>Issues identified by the inspection rules.</p>
-                  </div>
-
-                  <div className="findings-actions">
-                    <span className="count-pill">
-                      {findings.length} total
-                    </span>
-
-                    <button
-                      type="button"
-                      className="export-button"
-                      onClick={() =>
-                        exportFindingsCSV(filteredFindings, inspection)
-                      }
-                      disabled={filteredFindings.length === 0}
-                    >
-                      ↓ Export CSV
-                    </button>
-                  </div>
+                <div className="panel-heading findings-heading">
+                  <div><span className="panel-overline">DETECTION RESULTS</span><h3>Detected findings</h3><p>Review, filter and export issues from this scan.</p></div>
+                  <div className="findings-actions"><span className="count-pill">{filteredFindings.length} / {findings.length}</span><button className="export-button" type="button" onClick={() => exportCSV(filteredFindings, inspection)} disabled={!filteredFindings.length}>↓ Export CSV</button></div>
                 </div>
-
-
-                {/* Finding Filters */}
                 <div className="finding-filters">
-  <label>
-    Severity
-    <select
-      value={severityFilter}
-      onChange={(e) => setSeverityFilter(e.target.value)}
-    >
-      <option value="all">All severities</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-      <option value="warning">Warning</option>
-    </select>
-  </label>
-
-  <label>
-    Viewport
-    <select
-      value={viewportFilter}
-      onChange={(e) => setViewportFilter(e.target.value)}
-    >
-      <option value="all">All viewports</option>
-      <option value="desktop">Desktop</option>
-      <option value="tablet">Tablet</option>
-      <option value="mobile">Mobile</option>
-    </select>
-  </label>
-
-  <label>
-    Issue type
-    <select
-      value={issueTypeFilter}
-      onChange={(e) => setIssueTypeFilter(e.target.value)}
-    >
-      <option value="all">All issue types</option>
-      {issueTypes.map((type) => (
-        <option key={type} value={type}>
-          {type}
-        </option>
-      ))}
-    </select>
-  </label>
-
-  <button
-    type="button"
-    className="reset-filters-button"
-    onClick={resetFilters}
-  >
-    Reset filters
-  </button>
-</div>
-
-<p className="filter-result-count" aria-live="polite">
-  Showing {filteredFindings.length} of {findings.length} findings
-</p>
-                      
-                      
-                  
-
+                  <label>Severity<select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}><option value="all">All severities</option><option value="high">High</option><option value="medium">Medium</option><option value="warning">Warning</option><option value="low">Low</option></select></label>
+                  <label>Viewport<select value={viewportFilter} onChange={(e) => setViewportFilter(e.target.value)}><option value="all">All viewports</option>{VIEWPORTS.map((v) => <option value={v} key={v}>{v}</option>)}</select></label>
+                  <label>Issue type<select value={issueTypeFilter} onChange={(e) => setIssueTypeFilter(e.target.value)}><option value="all">All issue types</option>{issueTypes.map((type) => <option value={type} key={type}>{type}</option>)}</select></label>
+                  <button type="button" className="reset-button" onClick={resetFilters}>Reset filters ↺</button>
+                </div>
+                <div className="filter-status"><span>Showing <b>{filteredFindings.length}</b> of {findings.length} findings</span><span>Filters update instantly</span></div>
                 {filteredFindings.length === 0 ? (
-                  <p className="filter-empty">
-                    No findings match the selected filters. Try changing
-                    or resetting them.
-                  </p>
+                  <div className="filter-empty">{findings.length ? "No findings match these filters. Try resetting your filters." : "Great! No findings were reported for this inspection."}</div>
                 ) : (
                   <div className="findings-list">
                     {filteredFindings.map((finding, index) => (
-                      <article
-                        className="finding-row"
-                        key={`${finding.rule_id ?? finding.type ?? "issue"}-${finding.viewport ?? "unknown"}-${index}`}
-                      >
-                        <span
-                          className={`severity-indicator ${severityClass(
-                            finding.severity
-                          )}`}
-                        />
-
-                        <div className="finding-main">
-                          <strong>
-                            {(
-                              finding.rule_id ??
-                              finding.type ??
-                              "UI issue"
-                            ).replaceAll("_", " ")}
-                          </strong>
-
-                          <p>
-                            {finding.description ??
-                              finding.message ??
-                              "An issue was detected."}
-                          </p>
-
-                          {finding.evidence && (
-                            <a
-                              className="evidence-link"
-                              href={
-                                String(finding.evidence).startsWith("http")
-                                  ? finding.evidence
-                                  : screenshotUrl(finding.evidence)
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              View evidence ↗
-                            </a>
-                          )}
-                        </div>
-
-                        <span
-                          className={`severity-badge ${severityClass(
-                            finding.severity
-                          )}`}
-                        >
-                          {finding.severity ?? "warning"}
-                        </span>
-
-                        <span className="viewport-badge">
-                          {finding.viewport ?? "—"}
-                        </span>
+                      <article className="finding-row" key={`${findingType(finding)}-${finding.viewport ?? "unknown"}-${index}`}>
+                        <span className={`severity-indicator ${severityClass(finding.severity)}`} />
+                        <div className="finding-main"><strong>{findingType(finding).replaceAll("_", " ")}</strong><p>{finding.description ?? finding.message ?? "An issue was detected."}</p>{finding.evidence && <a className="evidence-link" href={String(finding.evidence).startsWith("http") ? finding.evidence : screenshotUrl(finding.evidence)} target="_blank" rel="noreferrer">View evidence ↗</a>}</div>
+                        <span className={`severity-badge ${severityClass(finding.severity)}`}>{finding.severity ?? "warning"}</span>
+                        <span className="viewport-badge">{finding.viewport ?? "—"}</span>
                       </article>
                     ))}
                   </div>
@@ -866,63 +582,21 @@ function exportFindingsCSV() {
           )}
         </section>
 
-        {/* Inspection History */}
-        <section
-          className="section-block history-section"
-          id="history"
-        >
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">YOUR RECENT ACTIVITY</p>
-              <h2>Inspection history</h2>
-            </div>
-
-            <button className="secondary-button" onClick={loadHistory}>
-              ↻ Refresh
-            </button>
+        <section className="history-section" id="history">
+          <div className="section-title-row">
+            <div><div className="eyebrow">YOUR RECENT ACTIVITY</div><h2>Inspection history</h2><p className="muted">Reopen a previous scan to review its report.</p></div>
+            <button className="subtle-button" type="button" onClick={loadHistory} disabled={historyLoading}>{historyLoading ? "Refreshing…" : "↻ Refresh history"}</button>
           </div>
-
-          <div className="content-panel history-panel">
-            {historyLoading ? (
-              <p className="muted">Loading inspection history…</p>
-            ) : history.length === 0 ? (
-              <p className="muted">No saved inspections yet.</p>
-            ) : (
-              history.map((item, index) => (
-                <button
-                  className="history-row"
-                  key={item.id || `${item.url}-${index}`}
-                  onClick={() => openHistory(item)}
-                >
-                  <span className="history-icon">↗</span>
-
-                  <span className="history-details">
-                    <strong>{item.url || "Unknown website"}</strong>
-
-                    <small>
-                      {item.created_at
-                        ? new Date(item.created_at).toLocaleString()
-                        : "Saved inspection"}
-                    </small>
-                  </span>
-
-                  <span className="history-count">
-                    {(item.findings ?? []).length} findings
-                  </span>
-
-                  <span className="history-open">View →</span>
-                </button>
-              ))
-            )}
+          <div className="history-panel">
+            {historyLoading ? <div className="history-empty">Loading inspection history…</div> : history.length === 0 ? <div className="history-empty">No saved inspections yet. Your completed scans will appear here.</div> : history.map((item, index) => (
+              <button className="history-row" type="button" key={item.id || `${item.url}-${index}`} onClick={() => openHistory(item)}>
+                <span className="history-icon">↗</span><span className="history-details"><strong>{item.url || "Unknown website"}</strong><small>{item.created_at ? new Date(item.created_at).toLocaleString() : "Saved inspection"}</small></span><span className="history-count">{(item.findings ?? []).length} findings</span><span className="history-open">Open report →</span>
+              </button>
+            ))}
           </div>
         </section>
 
-        <footer className="footer">
-          <span>OmniSight</span>
-          <span>
-            Responsive inspection · Rule-based detection
-          </span>
-        </footer>
+        <footer className="footer"><span className="footer-brand">◈ OmniSight</span><span>Responsive inspection · Rule-based detection</span><span>Built for better web experiences</span></footer>
       </main>
     </div>
   );
