@@ -93,6 +93,221 @@ function exportCSV(findings, inspection) {
   URL.revokeObjectURL(objectUrl);
 }
 
+function buildFixPlan(findings = []) {
+  const fixSuggestions = {
+    overlap: {
+      title: "Fix overlapping elements",
+      solution:
+        "Check element positioning, z-index, margins, and container dimensions. Use responsive layouts to prevent elements from overlapping.",
+    },
+    alignment: {
+      title: "Correct element alignment",
+      solution:
+        "Review flexbox or grid alignment properties. Ensure elements are consistently aligned across screen sizes.",
+    },
+    overflow: {
+      title: "Fix content overflow",
+      solution:
+        "Check container width, padding, and overflow properties. Use max-width: 100% and responsive sizing where appropriate.",
+    },
+    font: {
+      title: "Improve text readability",
+      solution:
+        "Use readable font sizes, suitable line heights, and responsive typography.",
+    },
+    image: {
+      title: "Fix image sizing",
+      solution:
+        "Use max-width: 100%, height: auto, and an appropriate object-fit value.",
+    },
+    spacing: {
+      title: "Improve spacing",
+      solution:
+        "Review margins, padding, and gaps to create consistent spacing between elements.",
+    },
+  };
+
+  const getSeverity = (severity) => {
+    const value = String(severity ?? "").toLowerCase();
+
+    if (value.includes("critical")) return 4;
+    if (value.includes("high")) return 3;
+    if (value.includes("medium")) return 2;
+    if (value.includes("low")) return 1;
+
+    return 1;
+  };
+
+  const getSuggestion = (finding) => {
+    const text = [
+      finding.rule_id,
+      finding.type,
+      finding.title,
+      finding.message,
+      finding.description,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (text.includes("overlap")) return fixSuggestions.overlap;
+    if (text.includes("align")) return fixSuggestions.alignment;
+    if (text.includes("overflow")) return fixSuggestions.overflow;
+    if (text.includes("font") || text.includes("text")) {
+      return fixSuggestions.font;
+    }
+    if (text.includes("image")) return fixSuggestions.image;
+    if (text.includes("spacing") || text.includes("margin")) {
+      return fixSuggestions.spacing;
+    }
+
+    return {
+      title: "Review this UI issue",
+      solution:
+        finding.recommendation ||
+        "Inspect the affected element and check its CSS properties at the reported viewport.",
+    };
+  };
+
+  return findings
+    .map((finding, index) => ({
+      ...finding,
+      planId: index + 1,
+      priority: getSeverity(finding.severity),
+      suggestion: getSuggestion(finding),
+    }))
+    .sort((a, b) => b.priority - a.priority);
+}
+
+function SmartFixPlanner({ findings = [] }) {
+  const fixPlan = buildFixPlan(findings);
+
+  const priorityLabel = (priority) => {
+    if (priority === 4) return "Critical";
+    if (priority === 3) return "High";
+    if (priority === 2) return "Medium";
+    return "Low";
+  };
+
+  const priorityColor = (priority) => {
+    if (priority === 4) return "critical";
+    if (priority === 3) return "high";
+    if (priority === 2) return "medium";
+    return "low";
+  };
+
+  const copyFixPlan = () => {
+    const report = fixPlan
+      .map(
+        (item, index) =>
+          `${index + 1}. ${item.suggestion.title}\n` +
+          `Priority: ${priorityLabel(item.priority)}\n` +
+          `Viewport: ${item.viewport || "Not specified"}\n` +
+          `Suggested fix: ${item.suggestion.solution}`
+      )
+      .join("\n\n");
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(report)
+        .then(() => alert("Fix plan copied successfully!"))
+        .catch(() => alert("Unable to copy the fix plan."));
+    } else {
+      alert("Clipboard is not supported in this browser.");
+    }
+  };
+
+  const criticalCount = fixPlan.filter(
+    (item) => item.priority === 4
+  ).length;
+
+  const highCount = fixPlan.filter(
+    (item) => item.priority === 3
+  ).length;
+
+  return (
+    <section className="smart-fix-planner">
+      <div className="planner-header">
+        <div>
+          <span className="planner-eyebrow">OMNISIGHT INTELLIGENCE</span>
+          <h2>Smart Fix Planner</h2>
+          <p>
+            Prioritized recommendations to help you fix website UI issues.
+          </p>
+        </div>
+
+        <button
+          className="copy-plan-button"
+          onClick={copyFixPlan}
+          disabled={fixPlan.length === 0}
+        >
+          Copy Fix Plan
+        </button>
+      </div>
+
+      <div className="planner-summary">
+        <div className="planner-stat">
+          <strong>{fixPlan.length}</strong>
+          <span>Total issues</span>
+        </div>
+
+        <div className="planner-stat">
+          <strong>{criticalCount}</strong>
+          <span>Critical issues</span>
+        </div>
+
+        <div className="planner-stat">
+          <strong>{highCount}</strong>
+          <span>High priority</span>
+        </div>
+      </div>
+
+      {fixPlan.length === 0 ? (
+        <div className="planner-empty">
+          <h3>No issues to plan!</h3>
+          <p>Run a website inspection to generate suggested fixes.</p>
+        </div>
+      ) : (
+        <div className="fix-plan-list">
+          {fixPlan.map((item, index) => (
+            <article className="fix-plan-card" key={item.id ?? item.planId}>
+              <div className="fix-plan-top">
+                <span className="fix-number">#{index + 1}</span>
+
+                <span
+                  className={`priority-badge ${priorityColor(
+                    item.priority
+                  )}`}
+                >
+                  {priorityLabel(item.priority)} Priority
+                </span>
+              </div>
+
+              <h3>{item.suggestion.title}</h3>
+
+              <p className="fix-description">
+                {item.message ||
+                  item.description ||
+                  item.title ||
+                  "UI issue detected during inspection."}
+              </p>
+
+              <div className="fix-viewport">
+                Viewport: <strong>{item.viewport || "Not specified"}</strong>
+              </div>
+
+              <div className="suggested-solution">
+                <strong>Suggested solution</strong>
+                <p>{item.suggestion.solution}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function App() {
   const [url, setUrl] = useState("https://example.com");
   const [inspection, setInspection] = useState(null);
@@ -575,8 +790,10 @@ function App() {
                         <span className="viewport-badge">{finding.viewport ?? "—"}</span>
                       </article>
                     ))}
-                  </div>
+                  </div> 
+                  
                 )}
+                <SmartFixPlanner findings={filteredFindings} />
               </section>
             </>
           )}
