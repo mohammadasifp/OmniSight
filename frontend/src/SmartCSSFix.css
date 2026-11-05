@@ -1,0 +1,141 @@
+
+.smart-css-panel {
+  margin: 28px 0;
+  padding: 25px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #fff;
+  color: #172033;
+}
+
+.smart-css-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 22px;
+}
+
+.smart-css-overline {
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.smart-css-heading h2 {
+  margin: 8px 0;
+  font-size: 23px;
+}
+
+.smart-css-heading p,
+.smart-css-explanation {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.smart-css-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-weight: 800;
+}
+
+.smart-css-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.smart-css-card {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.smart-css-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.smart-css-number {
+  color: #6366f1;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.smart-css-card h3 {
+  margin: 7px 0;
+  font-size: 16px;
+}
+
+.smart-css-viewport {
+  padding: 5px 8px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.smart-css-code {
+  max-height: 250px;
+  overflow: auto;
+  padding: 15px;
+  border-radius: 10px;
+  background: #111827;
+  color: #d1fae5;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.smart-css-code code {
+  font-family: Consolas, monospace;
+}
+
+.smart-css-copy {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.smart-css-copy:hover {
+  background: #4338ca;
+}
+
+.smart-css-empty {
+  padding: 30px;
+  text-align: center;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.smart-css-empty p {
+  color: #64748b;
+}
+
+@media (max-width: 700px) {
+  .smart-css-panel {
+    padding: 17px;
+  }
+
+  .smart-css-list {
+    grid-template-columns: 1fr;
+  }
+}
