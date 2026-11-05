@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import VisualDiff from "./VisualDiff";
+import SmartCSSFix from "./SmartCSSFix";
 const API = "http://127.0.0.1:8000";
 const VIEWPORTS = ["desktop", "tablet", "mobile"];
 
@@ -795,6 +796,7 @@ function App() {
                 )}
                 <SmartFixPlanner findings={filteredFindings} />
                 <VisualDiff />
+                <SmartCSSFix findings={filteredFindings} />
               </section>
             </>
           )}
