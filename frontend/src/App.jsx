@@ -798,6 +798,7 @@ function App() {
                 <SmartFixPlanner findings={filteredFindings} />
                 <VisualDiff />
                 <SmartCSSFix findings={filteredFindings} />
+                <BreakpointAdvisor findings={findings} />
               </section>
             </>
           )}
