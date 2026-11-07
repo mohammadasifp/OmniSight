@@ -1,0 +1,219 @@
+
+.breakpoint-panel {
+  margin: 28px 0;
+  padding: 25px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #fff;
+  color: #172033;
+}
+
+.breakpoint-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.breakpoint-overline {
+  color: #6366f1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.breakpoint-heading h2 {
+  margin: 8px 0;
+  font-size: 23px;
+}
+
+.breakpoint-heading p,
+.breakpoint-results p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.breakpoint-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 28px;
+}
+
+.breakpoint-selector {
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.breakpoint-width-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.breakpoint-width-label span {
+  color: #4f46e5;
+  font-weight: 800;
+}
+
+.breakpoint-selector input {
+  width: 100%;
+  accent-color: #4f46e5;
+  cursor: pointer;
+}
+
+.breakpoint-range-labels {
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.breakpoint-current {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+
+.breakpoint-current strong {
+  color: #4f46e5;
+}
+
+.breakpoint-device-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.breakpoint-device {
+  padding: 14px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.breakpoint-device strong,
+.breakpoint-device span {
+  display: block;
+}
+
+.breakpoint-device strong {
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.breakpoint-device span {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.breakpoint-device.active {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.breakpoint-device.active strong {
+  color: #4338ca;
+}
+
+.breakpoint-results {
+  margin-top: 24px;
+}
+
+.breakpoint-results h3,
+.breakpoint-recommendations h3 {
+  font-size: 16px;
+}
+
+.breakpoint-empty {
+  padding: 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.breakpoint-finding-list {
+  display: grid;
+  gap: 10px;
+}
+
+.breakpoint-finding {
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.breakpoint-finding p {
+  margin-bottom: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.breakpoint-recommendations {
+  margin-top: 28px;
+}
+
+.breakpoint-recommendation-heading p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.breakpoint-code-card {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.breakpoint-code-card h4 {
+  margin-top: 0;
+}
+
+.breakpoint-code-card pre {
+  overflow-x: auto;
+  padding: 15px;
+  border-radius: 9px;
+  background: #111827;
+  color: #d1fae5;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.breakpoint-code-card button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #4f46e5;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 750px) {
+  .breakpoint-panel {
+    padding: 17px;
+  }
+
+  .breakpoint-device-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .breakpoint-current {
+    flex-direction: column;
+  }
+}
