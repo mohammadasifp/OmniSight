@@ -3,6 +3,7 @@ import "./App.css";
 import VisualDiff from "./VisualDiff";
 import SmartCSSFix from "./SmartCSSFix";
 import BreakpointAdvisor from "./BreakpointAdvisor";
+import HealthTimeline from "./HealthTimeline";
 const API = "http://127.0.0.1:8000";
 const VIEWPORTS = ["desktop", "tablet", "mobile"];
 
@@ -799,6 +800,7 @@ function App() {
                 <VisualDiff />
                 <SmartCSSFix findings={filteredFindings} />
                 <BreakpointAdvisor findings={findings} />
+<HealthTimeline inspections={inspectionHistory} />
               </section>
             </>
           )}
