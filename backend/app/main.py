@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from app.api.analysis import router as analysis_router
 from fastapi.staticfiles import StaticFiles
 
 from app.api.inspections import router as inspections_router
