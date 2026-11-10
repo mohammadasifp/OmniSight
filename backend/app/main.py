@@ -40,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(inspections_router)
+app.include_router(analysis_router)
 
 app.mount(
     "/screenshots",
